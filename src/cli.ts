@@ -25,11 +25,19 @@ program
   });
 
 program
+  .command("init")
+  .description("Provision an empty, indexed collection")
+  .action(async () => {
+    const { runInit } = await import("./commands/init.js");
+    await runInit();
+  });
+
+program
   .command("ingest")
   .description("Index documents into the collection")
   .action(async () => {
     const { runIngest } = await import("./commands/ingest.js");
-    runIngest();
+    await runIngest();
   });
 
 program
@@ -38,7 +46,7 @@ program
   .argument("[query...]", "search query terms")
   .action(async (queryParts: string[]) => {
     const { runSearch } = await import("./commands/search.js");
-    runSearch(queryParts);
+    await runSearch(queryParts);
   });
 
 program.parse();
