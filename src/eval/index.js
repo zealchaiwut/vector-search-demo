@@ -2,14 +2,16 @@
  * Recall@k evaluation script for vector-search-demo.
  *
  * Configurable via env vars:
- *   SEARCH_URL        HTTP endpoint for the search API  (default: http://localhost:3000/search)
+ *   SEARCH_URL        HTTP endpoint for the search API  (default: derived from PORT, else :7070)
+ *   PORT              Port the server listens on        (default: 7070)
  *   K                 Number of top results to consider (default: 5)
  *   RECALL_THRESHOLD  Minimum pass fraction 0.0–1.0    (default: 0.8)
  *
  * Exit code: 0 when recall@k >= threshold, non-zero otherwise.
  */
 
-const SEARCH_URL = process.env.SEARCH_URL ?? "http://localhost:3000/search";
+const PORT = process.env.PORT ?? "7070";
+const SEARCH_URL = process.env.SEARCH_URL ?? `http://localhost:${PORT}/search`;
 const K = parseInt(process.env.K ?? "5", 10);
 const RECALL_THRESHOLD = parseFloat(process.env.RECALL_THRESHOLD ?? "0.8");
 
@@ -44,11 +46,8 @@ const QUERIES = [
 ];
 
 async function searchDocuments(query, k) {
-  const response = await fetch(SEARCH_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, k }),
-  });
+  const url = `${SEARCH_URL}?q=${encodeURIComponent(query)}&k=${k}`;
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Search API returned HTTP ${response.status}`);
   }

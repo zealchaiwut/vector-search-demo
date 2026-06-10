@@ -1,6 +1,10 @@
 node_modules/
 dist/
 .env
+
+# Generated at runtime by `ingest` — not source
+collection.json
+attachments/
 __pycache__/
 *.pyc
 *.log
