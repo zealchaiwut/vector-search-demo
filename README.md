@@ -20,6 +20,8 @@ for download. Includes a recall@k evaluation harness.
   per document).
 - **HTTP API** — one Fastify server with `/health`, `/search`, `/download/:docId`
   (GET + HEAD), and the search UI at `/`.
+- **Search UI** — rebuilt to approved mock design; result cards highlight the best
+  matching passage (`best_passage`) inline.
 - **Evaluation** — `npm run eval` reports recall@k against the running server.
   Current corpus + fixtures score **recall@5 = 1.00**.
 
