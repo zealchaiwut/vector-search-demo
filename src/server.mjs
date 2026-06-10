@@ -16,7 +16,8 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { searchDocuments } from "./core/search.js";
 import { batchEmbed } from "./data/embedder.js";
-import { upsertRows, getArticle, deleteArticle, listArticles } from "./data/collection.js";
+import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
+import { validateArticle } from "./data/articleValidation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -96,17 +97,27 @@ async function handleRequest(req, res) {
       return;
     }
     const rows = Array.isArray(payload.rows) ? payload.rows : [];
-    const errors = [];
-    let succeeded = 0;
+
+    // Validate all rows first (atomic rejection — nothing persisted if any fail)
+    const allErrors = [];
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
+      const fieldErrors = validateArticle(row.headline, row.details, row.attachment_url);
+      for (const e of fieldErrors) {
+        allErrors.push({ index: i, field: e.field, reason: e.message });
+      }
+    }
+    if (allErrors.length > 0) {
+      jsonResponse(res, 400, { errors: allErrors });
+      return;
+    }
+
+    // All rows valid — persist all
+    let succeeded = 0;
+    for (const row of rows) {
       const headline = (row.headline ?? "").trim();
       const details = (row.details ?? "").trim();
       const attachment_url = (row.attachment_url ?? "").trim();
-      if (!headline || !details) {
-        errors.push({ row: i, reason: "headline and details are required" });
-        continue;
-      }
       const id = randomUUID();
       const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
       upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
@@ -115,8 +126,8 @@ async function handleRequest(req, res) {
     jsonResponse(res, 200, {
       total: rows.length,
       succeeded,
-      failed: errors.length,
-      errors,
+      failed: 0,
+      errors: [],
     });
     return;
   }
@@ -132,13 +143,14 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Invalid JSON" });
       return;
     }
+    const fieldErrors = validateArticle(payload.headline, payload.details, payload.attachment_url);
+    if (fieldErrors.length > 0) {
+      jsonResponse(res, 400, { error: fieldErrors[0].message, errors: fieldErrors });
+      return;
+    }
     const headline = (payload.headline ?? "").trim();
     const details = (payload.details ?? "").trim();
     const attachment_url = (payload.attachment_url ?? "").trim();
-    if (!headline || !details) {
-      jsonResponse(res, 400, { error: "headline and details are required" });
-      return;
-    }
     const id = randomUUID();
     const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
     upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
@@ -174,13 +186,14 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Invalid JSON" });
       return;
     }
+    const fieldErrors = validateArticle(payload.headline, payload.details, payload.attachment_url);
+    if (fieldErrors.length > 0) {
+      jsonResponse(res, 400, { error: fieldErrors[0].message, errors: fieldErrors });
+      return;
+    }
     const headline = (payload.headline ?? "").trim();
     const details = (payload.details ?? "").trim();
     const attachment_url = (payload.attachment_url ?? "").trim();
-    if (!headline || !details) {
-      jsonResponse(res, 400, { error: "headline and details are required" });
-      return;
-    }
     const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
     upsertRows([{ id: `${articleId}:0`, headline, details, attachment_url, embedding }]);
     jsonResponse(res, 200, { id: articleId });
@@ -200,6 +213,19 @@ async function handleRequest(req, res) {
       return;
     }
     jsonResponse(res, 200, { id: articleId });
+    return;
+  }
+
+  // GET /health/integrity — compare article count vs. vector count
+  if (req.method === "GET" && pathname === "/health/integrity") {
+    const vectorCount = entityCount();
+    const articleCount = listArticles().length;
+    if (vectorCount === articleCount) {
+      jsonResponse(res, 200, { status: "ok", articleCount, vectorCount });
+    } else {
+      const delta = Math.abs(vectorCount - articleCount);
+      jsonResponse(res, 200, { status: "mismatch", articleCount, vectorCount, delta });
+    }
     return;
   }
 
