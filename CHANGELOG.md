@@ -3,6 +3,11 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 2.1 (2026-06-10)
+
+- #13: Rebuild search results page to approved mock
+- #14: Add best-matching passage to search results
+
 ## Sprint 1.2 (2026-06-10)
 
 - #1: Scaffold TypeScript monolith with CLI and Fastify server
