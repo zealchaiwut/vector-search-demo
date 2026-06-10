@@ -13,7 +13,10 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import { searchDocuments } from "./core/search.js";
+import { batchEmbed } from "./data/embedder.js";
+import { upsertRows } from "./data/collection.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -72,8 +75,37 @@ async function handleRequest(req, res) {
 
   // CORS preflight
   if (req.method === "OPTIONS") {
-    res.writeHead(204, { "Access-Control-Allow-Origin": "*" });
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
     res.end();
+    return;
+  }
+
+  // POST /articles — create a new article
+  if (req.method === "POST" && pathname === "/articles") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let payload;
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      jsonResponse(res, 400, { error: "Invalid JSON" });
+      return;
+    }
+    const headline = (payload.headline ?? "").trim();
+    const details = (payload.details ?? "").trim();
+    const attachment_url = (payload.attachment_url ?? "").trim();
+    if (!headline || !details) {
+      jsonResponse(res, 400, { error: "headline and details are required" });
+      return;
+    }
+    const id = randomUUID();
+    const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
+    upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
+    jsonResponse(res, 201, { id });
     return;
   }
 
