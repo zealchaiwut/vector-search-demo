@@ -158,7 +158,7 @@
     font-size: 12px;
     color: var(--muted);
   }
-  .download {
+  .open-link {
     font-family: var(--sans);
     font-weight: 500;
     font-size: 13px;
@@ -169,8 +169,8 @@
     border-radius: 8px;
     transition: background 0.15s, border-color 0.15s;
   }
-  .download:hover { background: var(--accent-soft); border-color: var(--accent); }
-  .download:focus-visible {
+  .open-link:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .open-link:focus-visible {
     outline: 3px solid var(--accent-soft);
     outline-offset: 2px;
   }
@@ -203,6 +203,326 @@
     .rel { text-align: left; }
     h1 { font-size: 25px; }
   }
+
+  /* Add Article form */
+  .add-section {
+    margin-top: 52px;
+    border-top: 1px solid var(--line);
+    padding-top: 36px;
+  }
+  .add-section h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    margin: 0 0 20px;
+  }
+  .add-form { display: flex; flex-direction: column; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .field input,
+  .field textarea {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: 0;
+  }
+  .field textarea { resize: vertical; min-height: 90px; }
+  .field input:focus,
+  .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .add-form button[type="submit"] {
+    align-self: flex-start;
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .add-form button[type="submit"]:hover { filter: brightness(1.07); }
+  .add-form button[type="submit"]:focus-visible {
+    outline: 3px solid var(--accent-soft);
+    outline-offset: 2px;
+  }
+  .add-form button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
+  .add-feedback {
+    font-size: 14px;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: none;
+  }
+  .add-feedback.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .add-feedback.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+
+  /* Bulk Upload section */
+  .bulk-section {
+    margin-top: 52px;
+    border-top: 1px solid var(--line);
+    padding-top: 36px;
+  }
+  .bulk-section h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  .bulk-section > p {
+    margin: 0 0 20px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .bulk-dropzone {
+    border: 2px dashed var(--line);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    text-align: center;
+    background: var(--surface);
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+  .bulk-dropzone:hover,
+  .bulk-dropzone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .bulk-dropzone input[type="file"] {
+    display: none;
+  }
+  .bulk-dropzone-label {
+    display: block;
+    font-size: 14px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .bulk-dropzone-label strong {
+    color: var(--accent);
+  }
+  .bulk-filename {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    min-height: 16px;
+  }
+  .bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .btn-bulk-upload {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-bulk-upload:hover { filter: brightness(1.07); }
+  .btn-bulk-upload:disabled { opacity: 0.6; cursor: not-allowed; }
+  .bulk-feedback {
+    font-size: 14px;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: none;
+    margin-top: 14px;
+  }
+  .bulk-feedback.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .bulk-feedback.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+  .bulk-feedback.partial {
+    display: block;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    color: #92400e;
+  }
+  .bulk-error-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+    list-style: disc;
+  }
+  .bulk-error-list li { margin-bottom: 4px; }
+
+  /* Articles list section */
+  .articles-section {
+    margin-top: 52px;
+    border-top: 1px solid var(--line);
+    padding-top: 36px;
+  }
+  .articles-section h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    margin: 0 0 20px;
+  }
+  .article-list { display: flex; flex-direction: column; gap: 10px; }
+  .article-row {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+  }
+  .article-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .article-row-title {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 16px;
+    margin: 0;
+    flex: 1;
+  }
+  .article-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .btn-edit, .btn-delete {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    background: var(--surface);
+  }
+  .btn-edit { color: var(--accent); }
+  .btn-edit:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .btn-delete { color: var(--red); }
+  .btn-delete:hover { background: #fef2f2; border-color: #fca5a5; }
+  .article-row-details {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 6px 0 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Inline edit form inside article row */
+  .edit-form {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+  .edit-form .field { display: flex; flex-direction: column; gap: 4px; }
+  .edit-form .field label { font-size: 12px; font-weight: 500; color: var(--ink); }
+  .edit-form .field input,
+  .edit-form .field textarea {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: 0;
+  }
+  .edit-form .field textarea { resize: vertical; min-height: 70px; }
+  .edit-form .field input:focus,
+  .edit-form .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .edit-form-actions { display: flex; gap: 8px; }
+  .btn-save {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 14px;
+    padding: 0 18px;
+    height: 36px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-save:hover { filter: brightness(1.07); }
+  .btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-cancel {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    padding: 0 14px;
+    height: 36px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .edit-status {
+    font-size: 13px;
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: none;
+  }
+  .edit-status.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .edit-status.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+  .articles-empty {
+    color: var(--muted);
+    font-size: 14px;
+    padding: 24px 0;
+  }
 </style>
 </head>
 <body>
@@ -225,6 +545,49 @@
 
   <div class="status" id="status" aria-live="polite"></div>
   <div class="results" id="results"></div>
+
+  <section class="add-section" aria-label="Add Article">
+    <h2>Add Article</h2>
+    <form class="add-form" id="add-form" novalidate>
+      <div class="field">
+        <label for="art-headline">Headline</label>
+        <input id="art-headline" name="headline" type="text" placeholder="Article headline" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="art-details">Details</label>
+        <textarea id="art-details" name="details" placeholder="Article body / details"></textarea>
+      </div>
+      <div class="field">
+        <label for="art-attachment-url">Attachment URL</label>
+        <input id="art-attachment-url" name="attachment_url" type="url" placeholder="https://example.com/file.pdf" autocomplete="off" />
+      </div>
+      <button type="submit" id="add-btn">Submit</button>
+    </form>
+    <div class="add-feedback" id="add-feedback" aria-live="polite"></div>
+  </section>
+
+  <section class="bulk-section" aria-label="Bulk Import Articles">
+    <h2>Bulk Import</h2>
+    <p>Upload a <strong>.json</strong> or <strong>.csv</strong> file. Each row must have <code>headline</code>, <code>details</code>, and <code>attachment_url</code> fields.</p>
+    <div class="bulk-dropzone" id="bulk-dropzone">
+      <label class="bulk-dropzone-label" for="bulk-file">
+        <strong>Choose file</strong> or drop it here
+      </label>
+      <input type="file" id="bulk-file" accept=".json,.csv" aria-label="Select JSON or CSV file for bulk import" />
+      <div class="bulk-filename" id="bulk-filename"></div>
+    </div>
+    <div class="bulk-actions">
+      <button class="btn-bulk-upload" id="bulk-upload-btn" type="button" disabled>Upload &amp; Import</button>
+    </div>
+    <div class="bulk-feedback" id="bulk-feedback" aria-live="polite"></div>
+  </section>
+
+  <section class="articles-section" aria-label="All Articles">
+    <h2>All Articles</h2>
+    <div class="article-list" id="article-list">
+      <p class="articles-empty">Loading articles…</p>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -257,23 +620,23 @@
     const top = Math.max(...results.map(r => r.score), 0);
     resultsEl.innerHTML = results.map(r => {
       const pct = top > 0 ? Math.round(r.score * 100 / top) : 0;
-      const title    = r.title   ?? "(untitled)";
-      const text     = r.snippet ?? r.text ?? "";
-      const doc_id   = r.doc_id  ?? "";
-      const dlUrl    = `/download/${encodeURIComponent(doc_id)}`;
+      const headline      = r.headline ?? "(untitled)";
+      const details       = r.details ?? "";
+      const articleId     = r.id ?? "";
+      const attachmentUrl = r.attachment_url ?? null;
       return `
         <article class="card">
           <div class="card-head">
-            <h2>${escapeHtml(title)}</h2>
+            <h2>${escapeHtml(headline)}</h2>
             <div class="rel">
               <div class="bar"><span data-pct="${pct}"></span></div>
               <div class="label">relevance ${pct}%</div>
             </div>
           </div>
-          <p class="doc-text">${escapeHtml(text)}</p>
+          <p class="doc-text">${escapeHtml(details)}</p>
           <div class="card-foot">
-            <span class="docid">${escapeHtml(doc_id)}</span>
-            <a class="download" href="${dlUrl}" download>Download</a>
+            <span class="docid">${escapeHtml(articleId)}</span>
+            ${attachmentUrl ? `<a class="open-link" href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener">Open</a>` : ""}
           </div>
         </article>`;
     }).join("");
@@ -320,6 +683,341 @@
       if (query) doSearch(query);
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Add Article form
+  // ---------------------------------------------------------------------------
+
+  const addForm      = document.getElementById("add-form");
+  const addBtn       = document.getElementById("add-btn");
+  const addFeedback  = document.getElementById("add-feedback");
+
+  function showAddFeedback(type, msg) {
+    addFeedback.className = `add-feedback ${type}`;
+    addFeedback.textContent = msg;
+  }
+
+  addForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const headline      = addForm.elements["headline"].value.trim();
+    const details       = addForm.elements["details"].value.trim();
+    const attachment_url = addForm.elements["attachment_url"].value.trim();
+
+    if (!headline) {
+      showAddFeedback("error", "Headline is required.");
+      return;
+    }
+    if (!details) {
+      showAddFeedback("error", "Details are required.");
+      return;
+    }
+
+    addBtn.disabled = true;
+    addFeedback.className = "add-feedback";
+    addFeedback.textContent = "";
+
+    try {
+      const createOpts = { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ headline, details, attachment_url }) };
+      createOpts.method = "POST";
+      const resp = await fetch(`${API_BASE}/articles`, createOpts);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error ?? `Server returned ${resp.status}`);
+      }
+      const data = await resp.json();
+      showAddFeedback("success", `Article created. ID: ${escapeHtml(data.id)}`);
+      addForm.reset();
+      loadArticles();
+    } catch (err) {
+      showAddFeedback("error", err.message);
+    } finally {
+      addBtn.disabled = false;
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Articles list — load, edit, delete
+  // ---------------------------------------------------------------------------
+
+  const articleListEl = document.getElementById("article-list");
+
+  function buildEditForm(article, rowEl) {
+    const form = document.createElement("div");
+    form.className = "edit-form";
+    form.innerHTML = `
+      <div class="field">
+        <label>Headline</label>
+        <input class="ef-headline" type="text" value="${escapeHtml(article.headline)}" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Details</label>
+        <textarea class="ef-details">${escapeHtml(article.details)}</textarea>
+      </div>
+      <div class="field">
+        <label>Attachment URL</label>
+        <input class="ef-url" type="url" value="${escapeHtml(article.attachment_url || "")}" autocomplete="off" />
+      </div>
+      <div class="edit-form-actions">
+        <button class="btn-save" type="button">Save</button>
+        <button class="btn-cancel" type="button">Cancel</button>
+      </div>
+      <div class="edit-status" aria-live="polite"></div>
+    `;
+
+    const saveBtn = form.querySelector(".btn-save");
+    const cancelBtn = form.querySelector(".btn-cancel");
+    const statusEl = form.querySelector(".edit-status");
+
+    cancelBtn.addEventListener("click", () => form.remove());
+
+    saveBtn.addEventListener("click", async () => {
+      const headline = form.querySelector(".ef-headline").value.trim();
+      const details = form.querySelector(".ef-details").value.trim();
+      const attachment_url = form.querySelector(".ef-url").value.trim();
+      if (!headline || !details) {
+        statusEl.className = "edit-status error";
+        statusEl.textContent = "Headline and details are required.";
+        return;
+      }
+      saveBtn.disabled = true;
+      statusEl.className = "edit-status";
+      statusEl.textContent = "";
+      try {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(article.id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ headline, details, attachment_url }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error ?? `Server returned ${resp.status}`);
+        }
+        // Update the DOM without a full page reload
+        rowEl.querySelector(".article-row-title").textContent = headline;
+        rowEl.querySelector(".article-row-details").textContent = details;
+        rowEl.dataset.headline = headline;
+        rowEl.dataset.details = details;
+        rowEl.dataset.attachmentUrl = attachment_url;
+        form.remove();
+      } catch (err) {
+        statusEl.className = "edit-status error";
+        statusEl.textContent = err.message;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    return form;
+  }
+
+  function renderArticleRow(article) {
+    const row = document.createElement("div");
+    row.className = "article-row";
+    row.dataset.id = article.id;
+    row.dataset.headline = article.headline;
+    row.dataset.details = article.details;
+    row.dataset.attachmentUrl = article.attachment_url || "";
+
+    row.innerHTML = `
+      <div class="article-row-head">
+        <p class="article-row-title">${escapeHtml(article.headline)}</p>
+        <div class="article-row-actions">
+          <button class="btn-edit" type="button" aria-label="Edit article">Edit</button>
+          <button class="btn-delete" type="button" aria-label="Delete article">Delete</button>
+        </div>
+      </div>
+      <p class="article-row-details">${escapeHtml(article.details)}</p>
+    `;
+
+    row.querySelector(".btn-edit").addEventListener("click", () => {
+      const existing = row.querySelector(".edit-form");
+      if (existing) { existing.remove(); return; }
+      const currentArticle = {
+        id: row.dataset.id,
+        headline: row.dataset.headline,
+        details: row.dataset.details,
+        attachment_url: row.dataset.attachmentUrl,
+      };
+      row.appendChild(buildEditForm(currentArticle, row));
+    });
+
+    row.querySelector(".btn-delete").addEventListener("click", async () => {
+      if (!confirm(`Delete article "${article.headline}"? This cannot be undone.`)) return;
+      try {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(article.id)}`, {
+          method: "DELETE",
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error ?? `Server returned ${resp.status}`);
+        }
+        row.remove();
+        if (articleListEl.children.length === 0) {
+          articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Add one above.</p>`;
+        }
+      } catch (err) {
+        alert(`Delete failed: ${err.message}`);
+      }
+    });
+
+    return row;
+  }
+
+  async function loadArticles() {
+    try {
+      const resp = await fetch(`${API_BASE}/articles`);
+      if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+      const data = await resp.json();
+      const articles = Array.isArray(data.articles) ? data.articles : [];
+      articleListEl.innerHTML = "";
+      if (articles.length === 0) {
+        articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Add one above.</p>`;
+        return;
+      }
+      for (const article of articles) {
+        articleListEl.appendChild(renderArticleRow(article));
+      }
+    } catch (err) {
+      articleListEl.innerHTML = `<p class="articles-empty" style="color:var(--red)">Failed to load articles: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  loadArticles();
+
+  // ---------------------------------------------------------------------------
+  // Bulk Import
+  // ---------------------------------------------------------------------------
+
+  const bulkDropzone  = document.getElementById("bulk-dropzone");
+  const bulkFileInput = document.getElementById("bulk-file");
+  const bulkFilename  = document.getElementById("bulk-filename");
+  const bulkUploadBtn = document.getElementById("bulk-upload-btn");
+  const bulkFeedback  = document.getElementById("bulk-feedback");
+
+  let selectedBulkFile = null;
+
+  bulkDropzone.addEventListener("click", () => bulkFileInput.click());
+
+  bulkDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    bulkDropzone.classList.add("drag-over");
+  });
+  bulkDropzone.addEventListener("dragleave", () => bulkDropzone.classList.remove("drag-over"));
+  bulkDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    bulkDropzone.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file) handleBulkFileSelected(file);
+  });
+
+  bulkFileInput.addEventListener("change", () => {
+    if (bulkFileInput.files[0]) handleBulkFileSelected(bulkFileInput.files[0]);
+  });
+
+  function handleBulkFileSelected(file) {
+    const name = file.name;
+    const ext = name.split(".").pop().toLowerCase();
+    if (ext !== "json" && ext !== "csv") {
+      bulkFeedback.className = "bulk-feedback error";
+      bulkFeedback.innerHTML = `Unsupported file format <strong>${escapeHtml(name)}</strong>. Please upload a <strong>.json</strong> or <strong>.csv</strong> file.`;
+      bulkUploadBtn.disabled = true;
+      selectedBulkFile = null;
+      bulkFilename.textContent = "";
+      return;
+    }
+    selectedBulkFile = file;
+    bulkFilename.textContent = name;
+    bulkFeedback.className = "bulk-feedback";
+    bulkFeedback.textContent = "";
+    bulkUploadBtn.disabled = false;
+  }
+
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 1) return [];
+    const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+    return lines.slice(1).map(line => {
+      const values = line.match(/("(?:[^"]|"")*"|[^,]*)/g)
+        .map(v => v.trim().replace(/^"|"$/g, "").replace(/""/g, '"'));
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = values[i] ?? ""; });
+      return obj;
+    });
+  }
+
+  bulkUploadBtn.addEventListener("click", async () => {
+    if (!selectedBulkFile) return;
+
+    bulkUploadBtn.disabled = true;
+    bulkFeedback.className = "bulk-feedback";
+    bulkFeedback.textContent = "";
+
+    try {
+      const text = await selectedBulkFile.text();
+      const ext = selectedBulkFile.name.split(".").pop().toLowerCase();
+      let rows;
+
+      if (ext === "json") {
+        try {
+          const parsed = JSON.parse(text);
+          rows = Array.isArray(parsed) ? parsed : parsed.rows ?? [];
+        } catch {
+          throw new Error("Invalid JSON file — could not parse.");
+        }
+      } else {
+        rows = parseCsv(text);
+      }
+
+      if (rows.length === 0) {
+        bulkFeedback.className = "bulk-feedback error";
+        bulkFeedback.textContent = "0 rows found in the file. Nothing to import.";
+        bulkUploadBtn.disabled = false;
+        return;
+      }
+
+      const resp = await fetch(`${API_BASE}/articles/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error ?? `Server returned ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      const { total, succeeded, failed, errors } = data;
+
+      if (failed === 0) {
+        bulkFeedback.className = "bulk-feedback success";
+        bulkFeedback.innerHTML = `<strong>${succeeded} / ${total} succeeded, 0 failed.</strong> All articles imported successfully.`;
+      } else if (succeeded === 0) {
+        bulkFeedback.className = "bulk-feedback error";
+        bulkFeedback.innerHTML = `<strong>0 / ${total} succeeded, ${failed} failed.</strong> No articles were imported.${renderBulkErrors(errors)}`;
+      } else {
+        bulkFeedback.className = "bulk-feedback partial";
+        bulkFeedback.innerHTML = `<strong>${succeeded} / ${total} succeeded, ${failed} failed.</strong>${renderBulkErrors(errors)}`;
+      }
+
+      if (succeeded > 0) loadArticles();
+    } catch (err) {
+      bulkFeedback.className = "bulk-feedback error";
+      bulkFeedback.textContent = err.message;
+    } finally {
+      bulkUploadBtn.disabled = false;
+    }
+  });
+
+  function renderBulkErrors(errors) {
+    if (!errors || errors.length === 0) return "";
+    const items = errors.map(e => {
+      const rowLabel = e.row !== undefined ? `Row ${e.row + 1}` : "Row";
+      const reason = e.reason || e.error || e.message || "unknown error";
+      return `<li>${escapeHtml(rowLabel)}: ${escapeHtml(reason)}</li>`;
+    }).join("");
+    return `<ul class="bulk-error-list">${items}</ul>`;
+  }
 </script>
 </body>
 </html>

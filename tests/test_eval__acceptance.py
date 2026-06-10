@@ -137,9 +137,9 @@ def test_ac4_per_query_shows_expected_docids():
             "RECALL_THRESHOLD": "0.0",
         })
         out = result.stdout + result.stderr
-        # At least one doc-id pattern should appear in output
-        assert "doc" in out.lower() or "id" in out.lower(), \
-            f"Expected doc_id reference in output, got:\n{out}"
+        # At least one article-id pattern should appear in output
+        assert "article" in out.lower() or "expected" in out.lower(), \
+            f"Expected article ID reference in output, got:\n{out}"
     finally:
         srv.shutdown()
 
@@ -211,9 +211,9 @@ def test_ac7_exit_0_when_recall_meets_threshold():
     port = 19701
     # Return the expected doc id for every query
     # We can't know them without parsing source, so return a rich result set
-    # The eval script will treat any result.doc_id matching expected[] as a hit.
+    # The eval script will treat any result.id matching expected[] as a hit.
     # To guarantee all hits we return a list that includes many possible IDs.
-    hits_payload = [{"doc_id": f"doc-{i:03d}", "score": 0.9} for i in range(1, 20)]
+    hits_payload = [{"id": f"article-{i:03d}", "score": 0.9} for i in range(1, 20)]
     srv = _start_mock_server(port, lambda _body: hits_payload)
     try:
         result = _run_eval({

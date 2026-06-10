@@ -11,12 +11,12 @@ const PUBLIC_DIR = join(__dirname, "..", "..", "public");
 const ATTACHMENTS_DIR = join(__dirname, "..", "..", "attachments");
 
 interface SearchResult {
-  doc_id: string;
-  title: string;
-  snippet: string;
+  id: string;
+  headline: string;
+  details: string;
   score: number;
-  attachment_name: string;
-  download_url: string;
+  attachment_url: string;
+  best_passage: { text: string; start_offset: number; end_offset: number };
 }
 
 export async function createServer() {

@@ -2,16 +2,14 @@
 
 ## Milvus Collection: `documents`
 
-Defined in `src/milvus/schema.js`.
+Defined in `src/milvus/schema.ts`.
 
 | Field | Type | Details |
 |-------|------|---------|
-| `id` | Int64 | Primary key, auto-generated |
-| `doc_id` | VarChar(128) | Document identifier |
-| `chunk_id` | Int64 | Chunk index within document |
-| `title` | VarChar(1024) | Document title |
-| `text` | VarChar(65535) | Chunk text content |
-| `attachment_name` | VarChar(512) | Source filename |
+| `id` | VarChar(128) | Primary key, manually set (format: `<uuid>:<chunk_index>`) |
+| `headline` | VarChar(1024) | Article headline |
+| `details` | VarChar(65535) | Article body / chunk text |
+| `attachment_url` | VarChar(512) | External attachment URL (http/https) |
 | `embedding` | FloatVector(384) | MiniLM embedding vector |
 
 ### Vector Index

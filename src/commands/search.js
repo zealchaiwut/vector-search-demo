@@ -39,14 +39,13 @@ export function runSearch(argv) {
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
     const rank = i + 1;
-    const attachment = `${r.doc_id}.txt`;
     process.stdout.write(
       `\n--- Result ---\n` +
       `Rank:       ${rank}\n` +
-      `Title:      ${r.title}\n` +
-      `Doc-ID:     ${r.doc_id}\n` +
+      `Headline:   ${r.headline}\n` +
+      `ID:         ${r.id}\n` +
       `Score:      ${r.score}\n` +
-      `Attachment: ${attachment}\n`
+      `URL:        ${r.attachment_url}\n`
     );
   }
   process.stdout.write("\n");

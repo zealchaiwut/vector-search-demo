@@ -1,4 +1,4 @@
-import { MilvusClient, DataType } from "@zilliz/milvus2-sdk-node";
+import { DataType, MilvusClient } from "@zilliz/milvus2-sdk-node";
 
 const COLLECTION_NAME = "documents";
 const EMBEDDING_DIM = 384;
@@ -8,31 +8,23 @@ export const COLLECTION_SCHEMA = {
   fields: [
     {
       name: "id",
-      data_type: DataType.Int64,
-      is_primary_key: true,
-      autoID: true,
-    },
-    {
-      name: "doc_id",
       data_type: DataType.VarChar,
       max_length: 128,
+      is_primary_key: true,
+      autoID: false,
     },
     {
-      name: "chunk_id",
-      data_type: DataType.Int64,
-    },
-    {
-      name: "title",
+      name: "headline",
       data_type: DataType.VarChar,
       max_length: 1024,
     },
     {
-      name: "text",
+      name: "details",
       data_type: DataType.VarChar,
       max_length: 65535,
     },
     {
-      name: "attachment_name",
+      name: "attachment_url",
       data_type: DataType.VarChar,
       max_length: 512,
     },
@@ -51,13 +43,13 @@ export const INDEX_PARAMS = {
   params: { M: 16, efConstruction: 200 },
 };
 
-function getClient() {
+function getClient(): MilvusClient {
   const host = process.env.MILVUS_HOST ?? "localhost";
   const port = process.env.MILVUS_PORT ?? "19530";
   return new MilvusClient({ address: `${host}:${port}` });
 }
 
-export async function createCollection(recreate = false) {
+export async function createCollection(recreate = false): Promise<void> {
   const client = getClient();
 
   const { value: exists } = await client.hasCollection({
@@ -79,7 +71,7 @@ export async function createCollection(recreate = false) {
   await client.loadCollection({ collection_name: COLLECTION_NAME });
 }
 
-export async function getCollection() {
+export async function getCollection(): Promise<MilvusClient> {
   const client = getClient();
   await client.loadCollection({ collection_name: COLLECTION_NAME });
   return client;

@@ -12,7 +12,7 @@ CODER_DIR = os.path.abspath(
 CORE_SEARCH_PATH = os.path.join(CODER_DIR, "src", "core", "search.js")
 SERVER_PATH = os.path.join(CODER_DIR, "src", "server.mjs")
 
-REQUIRED_FIELDS = {"doc_id", "title", "snippet", "score", "attachment_name", "download_url"}
+REQUIRED_FIELDS = {"id", "headline", "details", "score", "attachment_url"}
 
 
 @pytest.fixture
@@ -43,21 +43,21 @@ def test_search_core_and_http_api__ef64_and_cosine_in_source():
     assert ".slice(0, EF)" in src, "Over-fetch slice to EF not present"
 
 
-# --- AC3: Collapsing keeps only best-scoring chunk per doc_id ---
+# --- AC3: Collapsing keeps only best-scoring chunk per article id ---
 
-def test_search_core_and_http_api__one_result_per_doc_id(client):
-    # AC3: no duplicate doc_ids in results
+def test_search_core_and_http_api__one_result_per_article_id(client):
+    # AC3: no duplicate article ids in results
     r = client.get("/search", params={"q": "semantic embedding vector search", "k": "10"})
     assert r.status_code == 200
     results = r.json()["results"]
-    doc_ids = [item["doc_id"] for item in results]
-    assert len(doc_ids) == len(set(doc_ids)), f"Duplicate doc_ids in results: {doc_ids}"
+    article_ids = [item["id"] for item in results]
+    assert len(article_ids) == len(set(article_ids)), f"Duplicate article ids in results: {article_ids}"
 
 
 # --- AC4: Result shape has required fields with correct constraints ---
 
 def test_search_core_and_http_api__result_shape_all_fields(client):
-    # AC4: all required fields present; snippet ≤240 chars; score rounded; download_url correct
+    # AC4: all required fields present; details ≤240 chars; score rounded; attachment_url correct
     r = client.get("/search", params={"q": "vector search", "k": "3"})
     assert r.status_code == 200
     results = r.json()["results"]
@@ -65,10 +65,10 @@ def test_search_core_and_http_api__result_shape_all_fields(client):
     for item in results:
         missing = REQUIRED_FIELDS - set(item.keys())
         assert not missing, f"Result missing fields: {missing}"
-        assert len(item["snippet"]) <= 240, f"Snippet exceeds 240 chars: {len(item['snippet'])}"
+        assert len(item["details"]) <= 240, f"Details exceeds 240 chars: {len(item['details'])}"
         assert isinstance(item["score"], float), f"Score not float: {type(item['score'])}"
         assert item["score"] == round(item["score"], 4), "Score not rounded to 4dp"
-        assert item["download_url"] == f"/download/{item['doc_id']}"
+        assert item["attachment_url"] == f"/download/{item['id']}"
 
 
 # --- AC5: Results ordered descending by score, capped at k ---
@@ -106,8 +106,8 @@ def test_search_core_and_http_api__search_empty_query_returns_empty_array(client
 # --- AC7: GET /download/:docId streams file with correct headers ---
 
 def test_search_core_and_http_api__download_known_doc_streams_with_headers(client):
-    # AC7: known doc_id returns 200, Content-Disposition: attachment, non-empty body
-    r = client.get("/download/doc-001")
+    # AC7: known article id returns 200, Content-Disposition: attachment, non-empty body
+    r = client.get("/download/article-001")
     assert r.status_code == 200
     cd = r.headers.get("content-disposition", "")
     assert "attachment" in cd, f"Content-Disposition missing 'attachment': {cd!r}"
