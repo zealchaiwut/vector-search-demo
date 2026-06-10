@@ -4,3 +4,11 @@ __pycache__/
 *.log
 venv/
 .DS_Store
+
+# Commander runtime dirs
+.commander/logs/*
+!.commander/logs/.gitkeep
+.commander/sprints/*
+!.commander/sprints/.gitkeep
+.commander/alerts/*
+!.commander/alerts/.gitkeep
