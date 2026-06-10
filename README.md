@@ -106,11 +106,24 @@ Result shape:
 ```json
 {
   "results": [
-    { "doc_id": "doc-004", "title": "...", "snippet": "...", "score": 0.1996,
-      "attachment_name": "doc-004.txt", "download_url": "/download/doc-004" }
+    {
+      "doc_id": "doc-004",
+      "title": "...",
+      "snippet": "...",
+      "score": 0.1996,
+      "attachment_name": "doc-004.txt",
+      "download_url": "/download/doc-004",
+      "best_passage": {
+        "text": "Single verbatim sentence most similar to the query.",
+        "start_offset": 42,
+        "end_offset": 93
+      }
+    }
   ]
 }
 ```
+
+`best_passage` is the highest-scoring sentence from the document (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full document text.
 
 `/download/:docId` serves files from `attachments/`, so a doc is only downloadable
 after `ingest` has run.
