@@ -55,19 +55,18 @@ def test_wire_cli_search_command__search_endpoint_returns_results(client):
     assert len(data["results"]) > 0
 
 
-# --- AC2: result block shows rank, title, doc_id, score, attachment ---
+# --- AC2: result block shows rank, headline, id, score, url ---
 
 def test_wire_cli_search_command__result_block_has_required_fields():
-    # AC2: CLI output contains Rank, Title, Doc-ID, Score, Attachment
+    # AC2: CLI output contains Rank, Headline, ID, Score, URL
     result = run_cli("vector search", "-k", "2")
     assert result.returncode == 0, f"CLI exited {result.returncode}: {result.stderr}"
     out = result.stdout
     assert "Rank:" in out, "Output missing 'Rank:' field"
-    assert "Title:" in out, "Output missing 'Title:' field"
-    assert "Doc-ID:" in out, "Output missing 'Doc-ID:' field"
+    assert "Headline:" in out, "Output missing 'Headline:' field"
+    assert "ID:" in out, "Output missing 'ID:' field"
     assert "Score:" in out, "Output missing 'Score:' field"
-    assert "Attachment:" in out, "Output missing 'Attachment:' field"
-    assert ".txt" in out, "Attachment field missing .txt extension"
+    assert "URL:" in out, "Output missing 'URL:' field"
 
 
 # --- AC3: results ordered by descending score ---

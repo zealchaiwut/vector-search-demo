@@ -1,7 +1,7 @@
 import { generateDocuments } from "../data/generator.js";
 import { chunkDocuments } from "../data/chunker.js";
 import { batchEmbed } from "../data/embedder.js";
-import { dropCollection, createCollection, insertRows } from "../data/collection.js";
+import { dropCollection, createCollection, upsertRows } from "../data/collection.js";
 import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,35 +21,34 @@ export function runIngest() {
   }
   mkdirSync(ATTACHMENTS_DIR);
 
-  // Generate synthetic documents
-  const docs = generateDocuments();
+  // Generate news articles
+  const articles = generateDocuments();
 
-  // Write one attachment file per document
-  for (const doc of docs) {
+  // Write one attachment file per article (named by article id)
+  for (const article of articles) {
     writeFileSync(
-      join(ATTACHMENTS_DIR, `${doc.doc_id}.txt`),
-      `${doc.title}\n\n${doc.body}\n`,
+      join(ATTACHMENTS_DIR, `${article.id}.txt`),
+      `${article.headline}\n\n${article.details}\n`,
       "utf8"
     );
   }
 
-  // Chunk all documents
-  const chunks = chunkDocuments(docs);
+  // Chunk all articles
+  const chunks = chunkDocuments(articles);
 
   // Batch-embed all chunks at once
   const embeddedChunks = batchEmbed(chunks);
 
-  // Build rows for collection insertion
+  // Build rows for collection upsert
   const rows = embeddedChunks.map((c) => ({
-    doc_id: c.doc_id,
-    chunk_id: c.chunk_id,
-    title: c.title,
-    text: c.text,
-    attachment_name: c.attachment_name,
+    id: c.id,
+    headline: c.headline,
+    details: c.details,
+    attachment_url: c.attachment_url,
     embedding: c.embedding,
   }));
 
-  insertRows(rows);
+  upsertRows(rows);
 
-  process.stdout.write(`${docs.length} docs / ${rows.length} chunks indexed\n`);
+  process.stdout.write(`${articles.length} docs / ${rows.length} chunks indexed\n`);
 }

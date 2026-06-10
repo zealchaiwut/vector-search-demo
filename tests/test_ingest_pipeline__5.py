@@ -88,9 +88,9 @@ def test_ingest_pipeline__generator_produces_15_docs_5_topics():
     # AC4: DOCUMENTS array has ~15 entries; at least 5 distinct topic values
     with open(GENERATOR_PATH) as f:
         src = f.read()
-    # Count doc_id entries as proxy for doc count
-    doc_id_count = len(re.findall(r'doc_id\s*:', src))
-    assert doc_id_count >= 14, f"Expected ~15 docs, found only {doc_id_count} doc_id entries"
+    # Count id entries as proxy for doc count
+    id_count = len(re.findall(r'\bid\s*:', src))
+    assert id_count >= 14, f"Expected ~15 docs, found only {id_count} id entries"
     # Topics: infra, security, hr, product, finance appear in source
     topics = {"infra", "security", "hr", "product", "finance"}
     found = {t for t in topics if t in src.lower()}
@@ -112,29 +112,29 @@ def test_ingest_pipeline__chunks_120_words_30_word_overlap():
 # --- AC6: chunks batch-embedded before insertion ---
 
 def test_ingest_pipeline__chunks_batch_embedded_before_insert():
-    # AC6: ingest.js calls batchEmbed on all chunks before insertRows
+    # AC6: ingest.js calls batchEmbed on all chunks before upsertRows
     with open(INGEST_CMD_PATH) as f:
         src = f.read()
     assert "batchEmbed" in src, "ingest.js must call batchEmbed"
-    # batchEmbed called before insertRows in source order
+    # batchEmbed called before upsertRows in source order
     batch_pos = src.index("batchEmbed")
-    insert_pos = src.index("insertRows")
-    assert batch_pos < insert_pos, "batchEmbed must appear before insertRows in ingest.js"
+    upsert_pos = src.index("upsertRows")
+    assert batch_pos < upsert_pos, "batchEmbed must appear before upsertRows in ingest.js"
 
 
 # --- AC7: each inserted row has required fields ---
 
 def test_ingest_pipeline__rows_have_required_fields():
-    # AC7: every row in collection.json has doc_id, chunk_id, title, text, attachment_name, embedding
+    # AC7: every row in collection.json has id, headline, details, attachment_url, embedding
     r = run_ingest()
     assert r.returncode == 0, f"ingest failed: {r.stderr}"
     with open(COLLECTION_JSON) as f:
         rows = json.load(f)
     assert len(rows) > 0, "No rows in collection.json"
-    required = {"doc_id", "chunk_id", "title", "text", "attachment_name", "embedding"}
+    required = {"id", "headline", "details", "attachment_url", "embedding"}
     for row in rows[:5]:  # spot-check first 5
         missing = required - set(row.keys())
-        assert not missing, f"Row {row.get('chunk_id')} missing fields: {missing}"
+        assert not missing, f"Row {row.get('id')} missing fields: {missing}"
         assert isinstance(row["embedding"], list) and len(row["embedding"]) > 0
 
 

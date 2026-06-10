@@ -164,8 +164,8 @@ def test_recall_k_evaluation_script__zero_threshold_always_passes():
 def test_recall_k_evaluation_script__exit_0_when_all_hit():
     # AC: Exit 0 when recall >= threshold
     port = 29701
-    # Return doc-001 through doc-020 so all 6 hardcoded queries are satisfied
-    full_hits = [{"doc_id": f"doc-{i:03d}", "score": 1.0} for i in range(1, 21)]
+    # Return article-001 through article-020 so all 6 hardcoded queries are satisfied
+    full_hits = [{"id": f"article-{i:03d}", "score": 1.0} for i in range(1, 21)]
     srv = _start_server(port, lambda _: full_hits)
     try:
         r = _run_eval(
@@ -228,8 +228,8 @@ def test_recall_k_evaluation_script__high_threshold_triggers_failure():
 def test_recall_k_evaluation_script__k1_uses_single_top_result():
     # UAT Step 4: K=1 → recall computed on single top result per query
     port = 29802
-    # Return only doc-001 (first expected doc); with K=1 this should be a HIT for query 1
-    srv = _start_server(port, lambda _: [{"doc_id": "doc-001", "score": 1.0}])
+    # Return only article-001 (first expected article); with K=1 this should be a HIT for query 1
+    srv = _start_server(port, lambda _: [{"id": "article-001", "score": 1.0}])
     try:
         r = _run_eval(
             SEARCH_URL=f"http://localhost:{port}/search",

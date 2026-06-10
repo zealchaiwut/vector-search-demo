@@ -160,26 +160,26 @@ def test_ac2_over_fetches_before_collapse():
 # AC3 — Collapse: at most one result per doc_id
 # ---------------------------------------------------------------------------
 
-def test_ac3_each_doc_id_appears_at_most_once():
+def test_ac3_each_article_id_appears_at_most_once():
     results = _call_search_documents("vector semantic embedding search", k=10)
-    doc_ids = [r["doc_id"] for r in results]
-    assert len(doc_ids) == len(set(doc_ids)), \
-        f"Each doc_id must appear at most once. Got duplicates: {doc_ids}"
+    article_ids = [r["id"] for r in results]
+    assert len(article_ids) == len(set(article_ids)), \
+        f"Each article id must appear at most once. Got duplicates: {article_ids}"
 
 
 def test_ac3_collapse_logic_in_source():
-    """Source must contain collapse/dedup logic per doc_id."""
+    """Source must contain collapse/dedup logic per article id."""
     with open(CORE_SEARCH_JS) as f:
         src = f.read()
-    assert re.search(r"doc_id|collapse|dedup|Map|best.*chunk|chunk.*best", src, re.IGNORECASE), \
-        "Must contain doc_id collapsing logic"
+    assert re.search(r"articleId|byArticleId|collapse|dedup|Map|best.*chunk|chunk.*best", src, re.IGNORECASE), \
+        "Must contain article id collapsing logic"
 
 
 # ---------------------------------------------------------------------------
-# AC4 — Result shape: doc_id, title, snippet, score, attachment_name, download_url
+# AC4 — Result shape: id, headline, details, score, attachment_url, best_passage
 # ---------------------------------------------------------------------------
 
-REQUIRED_FIELDS = {"doc_id", "title", "snippet", "score", "attachment_name", "download_url"}
+REQUIRED_FIELDS = {"id", "headline", "details", "score", "attachment_url"}
 
 
 def test_ac4_result_has_all_required_fields():
@@ -200,11 +200,11 @@ def test_ac4_no_extra_unexpected_fields():
     assert not missing, f"Missing: {missing}"
 
 
-def test_ac4_snippet_max_240_chars():
+def test_ac4_details_max_240_chars():
     results = _call_search_documents("vector semantic embedding search pipeline", k=10)
     for r in results:
-        assert len(r["snippet"]) <= 240, \
-            f"Snippet too long ({len(r['snippet'])} chars) for doc {r['doc_id']}: {r['snippet']!r}"
+        assert len(r["details"]) <= 240, \
+            f"Details too long ({len(r['details'])} chars) for article {r['id']}: {r['details']!r}"
 
 
 def test_ac4_score_is_numeric_and_rounded():
@@ -217,18 +217,12 @@ def test_ac4_score_is_numeric_and_rounded():
         assert len(decimal_part) <= 4, f"score has too many decimals: {r['score']}"
 
 
-def test_ac4_attachment_name_present_and_nonempty():
+def test_ac4_attachment_url_present_and_correct():
     results = _call_search_documents("vector", k=3)
     for r in results:
-        assert r.get("attachment_name"), f"attachment_name missing or empty for {r['doc_id']}"
-
-
-def test_ac4_download_url_format():
-    results = _call_search_documents("vector", k=3)
-    for r in results:
-        expected_url = f"/download/{r['doc_id']}"
-        assert r["download_url"] == expected_url, \
-            f"download_url must be '/download/<doc_id>', got: {r['download_url']!r}"
+        assert r.get("attachment_url"), f"attachment_url missing or empty for {r['id']}"
+        assert r["attachment_url"] == f"/download/{r['id']}", \
+            f"attachment_url must be '/download/<id>', got: {r['attachment_url']!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -311,13 +305,13 @@ def test_ac6_search_empty_query_returns_empty_array():
 
 def test_ac7_download_known_doc_returns_200():
     with _ServerProcess() as srv:
-        status, headers, body = srv.get("/download/doc-001")
+        status, headers, body = srv.get("/download/article-001")
     assert status == 200, f"Expected 200 for known docId, got {status}"
 
 
 def test_ac7_download_has_content_disposition():
     with _ServerProcess() as srv:
-        status, headers, body = srv.get("/download/doc-001")
+        status, headers, body = srv.get("/download/article-001")
     cd = headers.get("Content-Disposition", headers.get("content-disposition", ""))
     assert cd, "Content-Disposition header must be set for /download/:docId"
     assert "attachment" in cd.lower(), f"Content-Disposition must include 'attachment', got: {cd!r}"
@@ -325,14 +319,14 @@ def test_ac7_download_has_content_disposition():
 
 def test_ac7_download_has_content_type():
     with _ServerProcess() as srv:
-        status, headers, body = srv.get("/download/doc-001")
+        status, headers, body = srv.get("/download/article-001")
     ct = headers.get("Content-Type", headers.get("content-type", ""))
     assert ct, "Content-Type header must be set for /download/:docId"
 
 
 def test_ac7_download_body_nonempty():
     with _ServerProcess() as srv:
-        status, headers, body = srv.get("/download/doc-001")
+        status, headers, body = srv.get("/download/article-001")
     assert len(body) > 0, "Download response body must not be empty"
 
 

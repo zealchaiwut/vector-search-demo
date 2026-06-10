@@ -59,24 +59,24 @@ def test_ac1_commands_search_imports_searchDocuments():
 
 
 # ---------------------------------------------------------------------------
-# AC2 - Each result block shows rank, title, doc_id, score, attachment name
+# AC2 - Each result block shows rank, headline, id, score, url
 # ---------------------------------------------------------------------------
 
 def test_ac2_result_block_contains_required_fields():
-    """Each result block must show rank, title, doc_id, score, attachment name."""
+    """Each result block must show rank, headline, id, score, url."""
     result = run_cli("vector search", "-k", "1")
     out = result.stdout
     assert result.returncode == 0, f"Non-zero exit: {result.stderr}"
     # rank
     assert re.search(r"rank\s*[:\-]?\s*1", out, re.IGNORECASE), f"Rank not found in:\n{out}"
-    # title
-    assert re.search(r"title\s*[:\-]", out, re.IGNORECASE), f"Title label not found in:\n{out}"
-    # doc_id
-    assert re.search(r"doc.?id\s*[:\-]", out, re.IGNORECASE), f"doc_id not found in:\n{out}"
+    # headline
+    assert re.search(r"headline\s*[:\-]", out, re.IGNORECASE), f"Headline label not found in:\n{out}"
+    # id
+    assert re.search(r"\bID\s*[:\-]", out, re.IGNORECASE), f"ID not found in:\n{out}"
     # score
     assert re.search(r"score\s*[:\-]", out, re.IGNORECASE), f"Score not found in:\n{out}"
-    # attachment name (filename like doc-001.txt)
-    assert re.search(r"attachment\s*[:\-]", out, re.IGNORECASE), f"Attachment not found in:\n{out}"
+    # url
+    assert re.search(r"url\s*[:\-]", out, re.IGNORECASE), f"URL not found in:\n{out}"
 
 
 # ---------------------------------------------------------------------------

@@ -3,8 +3,8 @@
  *
  * Reads the ingested, file-backed collection (collection.json, produced by
  * `ingest`), rebuilds a TF-IDF space over the stored chunk texts, embeds the
- * query into that same space, and ranks documents by cosine similarity with
- * ef-style over-fetching and per-document chunk collapsing.
+ * query into that same space, and ranks articles by cosine similarity with
+ * ef-style over-fetching and per-article chunk collapsing.
  *
  * Search depends on ingest: with an empty/absent collection it returns [].
  */
@@ -156,54 +156,57 @@ export function searchDocuments(query, k = 10) {
   if (rows.length === 0) return [];
 
   // Build the TF-IDF space over the ingested chunk corpus, then embed query.
-  const idf = buildIDF(rows.map((r) => `${r.title} ${r.text}`));
+  const idf = buildIDF(rows.map((r) => `${r.headline} ${r.details}`));
   const queryVec = embed(query, idf);
   if (!queryVec) return [];
 
   // Score every chunk by cosine similarity in the shared space.
   const scored = rows.map((row) => ({
-    doc_id: row.doc_id,
-    title: row.title,
-    text: row.text,
-    score: cosineSimilarity(queryVec, embed(`${row.title} ${row.text}`, idf)),
+    // Extract article id from chunk id (format: "article-001:0")
+    articleId: row.id.split(":")[0],
+    id: row.id,
+    headline: row.headline,
+    details: row.details,
+    attachment_url: row.attachment_url,
+    score: cosineSimilarity(queryVec, embed(`${row.headline} ${row.details}`, idf)),
   }));
 
-  // Over-fetch the top EF chunks before collapsing to documents.
+  // Over-fetch the top EF chunks before collapsing to articles.
   const candidates = scored.sort((a, b) => b.score - a.score).slice(0, EF);
 
-  // Collapse: keep the best-scoring chunk per doc_id.
-  const byDocId = new Map();
+  // Collapse: keep the best-scoring chunk per article.
+  const byArticleId = new Map();
   for (const c of candidates) {
-    if (!byDocId.has(c.doc_id) || c.score > byDocId.get(c.doc_id).score) {
-      byDocId.set(c.doc_id, c);
+    if (!byArticleId.has(c.articleId) || c.score > byArticleId.get(c.articleId).score) {
+      byArticleId.set(c.articleId, c);
     }
   }
 
-  // Build full doc_text per doc_id (chunk texts joined in collection order).
-  const docTexts = new Map();
+  // Build full article text per article id (chunk details joined in collection order).
+  const articleTexts = new Map();
   for (const row of rows) {
-    if (!docTexts.has(row.doc_id)) {
-      docTexts.set(row.doc_id, row.text);
+    const aid = row.id.split(":")[0];
+    if (!articleTexts.has(aid)) {
+      articleTexts.set(aid, row.details);
     } else {
-      docTexts.set(row.doc_id, docTexts.get(row.doc_id) + " " + row.text);
+      articleTexts.set(aid, articleTexts.get(aid) + " " + row.details);
     }
   }
 
-  // Shape results: drop zero-score docs, sort, cap at k.
-  return [...byDocId.values()]
+  // Shape results: drop zero-score articles, sort, cap at k.
+  return [...byArticleId.values()]
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, k)
     .map((r) => {
-      const docText = docTexts.get(r.doc_id) ?? r.text;
-      const best_passage = selectBestPassage(docText, queryVec, idf);
+      const articleText = articleTexts.get(r.articleId) ?? r.details;
+      const best_passage = selectBestPassage(articleText, queryVec, idf);
       return {
-        doc_id: r.doc_id,
-        title: r.title,
-        snippet: r.text.replace(/\s+/g, " ").trim().slice(0, 240),
+        id: r.articleId,
+        headline: r.headline,
+        details: r.details.replace(/\s+/g, " ").trim().slice(0, 240),
         score: parseFloat(r.score.toFixed(4)),
-        attachment_name: `${r.doc_id}.txt`,
-        download_url: `/download/${r.doc_id}`,
+        attachment_url: r.attachment_url,
         best_passage,
       };
     });

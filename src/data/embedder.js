@@ -11,7 +11,7 @@ function buildIDF(chunks) {
   const N = chunks.length;
   const df = new Map();
   for (const chunk of chunks) {
-    for (const token of new Set(tokenize(chunk.text))) {
+    for (const token of new Set(tokenize(chunk.details))) {
       df.set(token, (df.get(token) ?? 0) + 1);
     }
   }
@@ -66,7 +66,7 @@ export function batchEmbed(chunks) {
   }
 
   return chunks.map((chunk) => {
-    const vec = embedText(chunk.text, vocab, idf);
+    const vec = embedText(chunk.details, vocab, idf);
     return { ...chunk, embedding: Array.from(vec) };
   });
 }

@@ -24,7 +24,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORE_SEARCH_JS = os.path.join(REPO_ROOT, "src", "core", "search.js")
 COLLECTION_JSON = os.path.join(REPO_ROOT, "collection.json")
 
-REQUIRED_LEGACY_FIELDS = {"doc_id", "title", "snippet", "score", "attachment_name", "download_url"}
+REQUIRED_CURRENT_FIELDS = {"id", "headline", "details", "score", "attachment_url"}
 
 
 # ---------------------------------------------------------------------------
@@ -55,16 +55,17 @@ process.stdout.write(JSON.stringify(results));
 
 
 def _load_doc_texts():
-    """Return a map of doc_id -> full chunk text from collection.json."""
+    """Return a map of article id -> full chunk text from collection.json."""
     with open(COLLECTION_JSON) as f:
         rows = json.load(f)
     texts = {}
     for row in rows:
-        doc_id = row["doc_id"]
-        if doc_id not in texts:
-            texts[doc_id] = row["text"]
+        article_id = row["id"].split(":")[0]
+        chunk_text = row.get("details", row.get("text", ""))
+        if article_id not in texts:
+            texts[article_id] = chunk_text
         else:
-            texts[doc_id] = texts[doc_id] + " " + row["text"]
+            texts[article_id] = texts[article_id] + " " + chunk_text
     return texts
 
 
@@ -77,7 +78,7 @@ def test_ac1_every_result_has_best_passage():
     assert len(results) >= 1, "Expected at least one result"
     for r in results:
         assert "best_passage" in r, \
-            f"Result for doc_id={r.get('doc_id')} missing 'best_passage' field. Keys: {list(r.keys())}"
+            f"Result for id={r.get('id')} missing 'best_passage' field. Keys: {list(r.keys())}"
 
 
 def test_ac1_best_passage_is_object():
@@ -97,16 +98,16 @@ def test_ac2_best_passage_text_is_nonempty():
     assert len(results) >= 1
     for r in results:
         bp = r["best_passage"]
-        assert "text" in bp, f"best_passage missing 'text' key for doc_id={r['doc_id']}"
+        assert "text" in bp, f"best_passage missing 'text' key for id={r['id']}"
         assert len(bp["text"]) > 0, \
-            f"best_passage.text is empty for doc_id={r['doc_id']}"
+            f"best_passage.text is empty for id={r['id']}"
 
 
 def test_ac2_best_passage_nonempty_for_all_k():
     results = _call_search_documents("semantic retrieval pipeline", k=10)
     for r in results:
         assert r["best_passage"]["text"].strip() != "", \
-            f"best_passage.text is blank for doc_id={r['doc_id']}"
+            f"best_passage.text is blank for id={r['id']}"
 
 
 # ---------------------------------------------------------------------------
@@ -118,11 +119,11 @@ def test_ac3_text_is_verbatim_substring_of_doc():
     results = _call_search_documents("vector search embedding cosine", k=6)
     assert len(results) >= 1
     for r in results:
-        doc_id = r["doc_id"]
+        article_id = r["id"]
         passage_text = r["best_passage"]["text"]
-        doc_text = doc_texts.get(doc_id, "")
+        doc_text = doc_texts.get(article_id, "")
         assert passage_text in doc_text, (
-            f"best_passage.text is not a verbatim substring of document text for {doc_id}.\n"
+            f"best_passage.text is not a verbatim substring of document text for {article_id}.\n"
             f"  passage: {passage_text!r}\n"
             f"  doc_text: {doc_text[:200]!r}"
         )
@@ -133,11 +134,9 @@ def test_ac3_text_is_single_sentence():
     results = _call_search_documents("neural network embedding", k=5)
     for r in results:
         text = r["best_passage"]["text"].strip()
-        # A single sentence: should not contain more than one sentence-ending punctuation
-        # followed by a capital letter (rough heuristic for multi-sentence detection)
         sentence_breaks = re.findall(r'[.!?]\s+[A-Z]', text)
         assert len(sentence_breaks) == 0, (
-            f"best_passage.text for {r['doc_id']} appears to span multiple sentences: {text!r}"
+            f"best_passage.text for {r['id']} appears to span multiple sentences: {text!r}"
         )
 
 
@@ -146,9 +145,8 @@ def test_ac3_text_not_truncated_mid_sentence():
     results = _call_search_documents("approximate nearest neighbour", k=3)
     for r in results:
         text = r["best_passage"]["text"].strip()
-        # Should end with sentence-ending punctuation
         assert re.search(r'[.!?]$', text), (
-            f"best_passage.text for {r['doc_id']} appears truncated mid-sentence: {text!r}"
+            f"best_passage.text for {r['id']} appears truncated mid-sentence: {text!r}"
         )
 
 
@@ -161,9 +159,9 @@ def test_ac4_offsets_present():
     for r in results:
         bp = r["best_passage"]
         assert "start_offset" in bp, \
-            f"best_passage missing 'start_offset' for doc_id={r['doc_id']}"
+            f"best_passage missing 'start_offset' for id={r['id']}"
         assert "end_offset" in bp, \
-            f"best_passage missing 'end_offset' for doc_id={r['doc_id']}"
+            f"best_passage missing 'end_offset' for id={r['id']}"
 
 
 def test_ac4_offsets_are_integers():
@@ -182,12 +180,12 @@ def test_ac4_offsets_index_into_doc_text():
     results = _call_search_documents("vector embedding similarity", k=6)
     assert len(results) >= 1
     for r in results:
-        doc_id = r["doc_id"]
+        article_id = r["id"]
         bp = r["best_passage"]
-        doc_text = doc_texts.get(doc_id, "")
+        doc_text = doc_texts.get(article_id, "")
         extracted = doc_text[bp["start_offset"]:bp["end_offset"]]
         assert extracted == bp["text"], (
-            f"Offset mismatch for {doc_id}: "
+            f"Offset mismatch for {article_id}: "
             f"doc_text[{bp['start_offset']}:{bp['end_offset']}]={extracted!r} "
             f"!= best_passage.text={bp['text']!r}"
         )
@@ -199,7 +197,7 @@ def test_ac4_start_offset_less_than_end_offset():
         bp = r["best_passage"]
         assert bp["start_offset"] < bp["end_offset"], (
             f"start_offset ({bp['start_offset']}) must be < end_offset ({bp['end_offset']}) "
-            f"for doc_id={r['doc_id']}"
+            f"for id={r['id']}"
         )
 
 
@@ -210,7 +208,6 @@ def test_ac4_start_offset_less_than_end_offset():
 def test_ac5_search_js_uses_cosine_for_passage():
     with open(CORE_SEARCH_JS) as f:
         src = f.read()
-    # Must use cosine/similarity logic for passage selection
     assert re.search(r"cosineSimilarity|cosine|similarity", src, re.IGNORECASE), \
         "search.js must use cosine similarity for best_passage selection"
 
@@ -218,7 +215,6 @@ def test_ac5_search_js_uses_cosine_for_passage():
 def test_ac5_search_js_splits_into_sentences():
     with open(CORE_SEARCH_JS) as f:
         src = f.read()
-    # Must have sentence splitting logic
     assert re.search(r"sentence|split|\.match\(|\.split\(", src, re.IGNORECASE), \
         "search.js must split text into sentences for passage selection"
 
@@ -230,7 +226,7 @@ def test_ac5_search_js_splits_into_sentences():
 def test_ac6_relevant_passage_for_specific_query():
     """A query about HNSW should return a passage mentioning HNSW."""
     results = _call_search_documents("HNSW approximate nearest neighbour algorithm", k=5)
-    hnsw_results = [r for r in results if "hnsw" in r["doc_id"].lower() or
+    hnsw_results = [r for r in results if
                     "HNSW" in r["best_passage"]["text"] or "nearest" in r["best_passage"]["text"].lower()]
     assert len(hnsw_results) >= 1, (
         "Query about HNSW should return at least one result with relevant passage text. "
@@ -270,14 +266,12 @@ def test_ac7_result_ids_ordered_by_score_descending():
 def test_ac7_best_passage_score_does_not_alter_doc_order():
     """Doc-level scores should be unchanged by passage extraction."""
     results_with_passage = _call_search_documents("approximate search index", k=6)
-    doc_ids_ordered = [r["doc_id"] for r in results_with_passage]
-    doc_scores = {r["doc_id"]: r["score"] for r in results_with_passage}
+    ids_ordered = [r["id"] for r in results_with_passage]
 
-    # Run again — order must be stable
     results_again = _call_search_documents("approximate search index", k=6)
-    doc_ids_again = [r["doc_id"] for r in results_again]
-    assert doc_ids_ordered == doc_ids_again, (
-        f"Result order changed between identical queries: {doc_ids_ordered} vs {doc_ids_again}"
+    ids_again = [r["id"] for r in results_again]
+    assert ids_ordered == ids_again, (
+        f"Result order changed between identical queries: {ids_ordered} vs {ids_again}"
     )
 
 
@@ -293,33 +287,31 @@ def test_ac8_results_count_does_not_exceed_k():
 def test_ac8_passage_only_in_returned_results():
     """best_passage exists only on results returned, not extra docs."""
     results = _call_search_documents("semantic embedding retrieval", k=3)
-    # All returned results have best_passage — no extra
     for r in results:
         assert "best_passage" in r
-    # Count must respect k cap
     assert len(results) <= 3
 
 
 # ---------------------------------------------------------------------------
-# AC9 — no existing fields removed or renamed
+# AC9 — no existing fields removed or renamed (news-article schema)
 # ---------------------------------------------------------------------------
 
-def test_ac9_all_legacy_fields_present():
+def test_ac9_all_current_fields_present():
     results = _call_search_documents("vector", k=3)
     assert len(results) >= 1
     for r in results:
-        missing = REQUIRED_LEGACY_FIELDS - set(r.keys())
+        missing = REQUIRED_CURRENT_FIELDS - set(r.keys())
         assert not missing, (
-            f"Legacy field(s) missing from result for {r.get('doc_id')}: {missing}"
+            f"Field(s) missing from result for id={r.get('id')}: {missing}"
         )
 
 
-def test_ac9_snippet_still_present_and_correct():
+def test_ac9_details_still_present_and_correct():
     results = _call_search_documents("embedding model", k=3)
     for r in results:
-        assert "snippet" in r
-        assert isinstance(r["snippet"], str)
-        assert len(r["snippet"]) <= 240
+        assert "details" in r
+        assert isinstance(r["details"], str)
+        assert len(r["details"]) <= 240
 
 
 def test_ac9_score_still_numeric_and_rounded():
@@ -331,10 +323,11 @@ def test_ac9_score_still_numeric_and_rounded():
         assert len(decimal_part) <= 4, f"score has too many decimals: {r['score']}"
 
 
-def test_ac9_download_url_unchanged():
+def test_ac9_attachment_url_present():
     results = _call_search_documents("vector", k=3)
     for r in results:
-        assert r["download_url"] == f"/download/{r['doc_id']}"
+        assert "attachment_url" in r
+        assert r["attachment_url"].startswith("/download/")
 
 
 # ---------------------------------------------------------------------------
