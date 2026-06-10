@@ -9,7 +9,7 @@ BASE_URL = os.environ.get("UAT_BASE_URL", "http://localhost:8001")
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORE_SEARCH_JS = os.path.join(REPO_ROOT, "..", "coder", "src", "core", "search.js")
 
-LEGACY_FIELDS = {"doc_id", "title", "snippet", "score", "attachment_name", "download_url"}
+CURRENT_FIELDS = {"id", "headline", "details", "score", "attachment_url"}
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def test_add_best_matching_passage__every_result_has_best_passage(client):
     assert len(results) >= 1, "Expected at least one result"
     for res in results:
         assert "best_passage" in res, (
-            f"doc_id={res.get('doc_id')} missing 'best_passage'. Keys: {list(res.keys())}"
+            f"id={res.get('id')} missing 'best_passage'. Keys: {list(res.keys())}"
         )
 
 
@@ -42,7 +42,7 @@ def test_add_best_matching_passage__best_passage_non_empty(client):
     for res in results:
         bp = res.get("best_passage", {})
         assert bp.get("text"), (
-            f"doc_id={res.get('doc_id')} has empty or missing best_passage.text"
+            f"id={res.get('id')} has empty or missing best_passage.text"
         )
 
 
@@ -56,11 +56,11 @@ def test_add_best_matching_passage__text_verbatim_in_document(client):
     for res in results:
         bp = res["best_passage"]
         passage_text = bp["text"]
-        dl = client.get(f"/download/{res['doc_id']}")
+        dl = client.get(res["attachment_url"])
         assert dl.status_code == 200
         raw_normalized = dl.text.replace("\n", " ")
         assert passage_text in raw_normalized, (
-            f"doc_id={res['doc_id']}: best_passage.text not found verbatim in document. "
+            f"id={res['id']}: best_passage.text not found verbatim in document. "
             f"passage={passage_text!r}"
         )
 
@@ -74,8 +74,8 @@ def test_add_best_matching_passage__offsets_present_and_valid(client):
     results = r.json()["results"]
     for res in results:
         bp = res["best_passage"]
-        assert "start_offset" in bp, f"doc_id={res['doc_id']} missing start_offset"
-        assert "end_offset" in bp, f"doc_id={res['doc_id']} missing end_offset"
+        assert "start_offset" in bp, f"id={res['id']} missing start_offset"
+        assert "end_offset" in bp, f"id={res['id']} missing end_offset"
         assert isinstance(bp["start_offset"], int) and bp["start_offset"] >= 0
         assert isinstance(bp["end_offset"], int) and bp["end_offset"] > bp["start_offset"]
 
@@ -122,17 +122,17 @@ def test_add_best_matching_passage__bounded_to_top_k(client):
     assert all("best_passage" in res for res in r2.json()["results"])
 
 
-# --- AC9: no existing search API fields removed or renamed ---
+# --- AC9: search API fields are present (news-article schema) ---
 
-def test_add_best_matching_passage__legacy_fields_intact(client):
-    # AC9: no existing API contract fields removed or renamed
+def test_add_best_matching_passage__current_fields_intact(client):
+    # AC9: current API contract fields are present (news-article schema)
     r = client.get("/search", params={"q": "document retrieval", "k": "3"})
     assert r.status_code == 200
     results = r.json()["results"]
     for res in results:
-        missing = LEGACY_FIELDS - res.keys()
+        missing = CURRENT_FIELDS - res.keys()
         assert not missing, (
-            f"doc_id={res.get('doc_id')} is missing legacy fields: {missing}"
+            f"id={res.get('id')} is missing required fields: {missing}"
         )
 
 

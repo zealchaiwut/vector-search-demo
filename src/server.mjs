@@ -3,7 +3,7 @@
  *
  * Endpoints:
  *   GET /search?q=<query>    — returns ranked result cards
- *   GET /download/:docId     — returns the source document as a file download
+ *   GET /download/:articleId — returns the source article as a file download
  *   GET /                    — serves public/index.html
  *   GET /static/*            — serves files from public/
  */
@@ -13,11 +13,12 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { searchDocuments, DOCUMENTS } from "./core/search.js";
+import { searchDocuments } from "./core/search.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
 const PUBLIC_DIR = join(REPO_ROOT, "public");
+const ATTACHMENTS_DIR = join(REPO_ROOT, "attachments");
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
 function search(query, k = 10) {
@@ -77,7 +78,7 @@ async function handleRequest(req, res) {
   }
 
   // GET /search?q=<query>
-  // Result shape: [{ doc_id, title, snippet, score, attachment_name, download_url }]
+  // Result shape: [{ id, headline, details, score, attachment_url, best_passage }]
   if (req.method === "GET" && pathname === "/search") {
     const q = url.searchParams.get("q") ?? "";
     const k = parseInt(url.searchParams.get("k") ?? "10", 10);
@@ -86,22 +87,26 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // GET /download/:docId
+  // GET /download/:articleId
   if (req.method === "GET" && pathname.startsWith("/download/")) {
-    const doc_id = pathname.slice("/download/".length);
-    const doc = DOCUMENTS.find((d) => d.doc_id === doc_id);
-    if (!doc) {
+    const articleId = pathname.slice("/download/".length);
+    const filePath = join(ATTACHMENTS_DIR, `${articleId}.txt`);
+    if (!existsSync(filePath)) {
       jsonResponse(res, 404, { error: "Document not found" });
       return;
     }
-    const content = Buffer.from(`${doc.title}\n\n${doc.content}\n`);
-    res.writeHead(200, {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${doc_id}.txt"`,
-      "Content-Length": content.length,
-      "Access-Control-Allow-Origin": "*",
-    });
-    res.end(content);
+    try {
+      const content = await readFile(filePath);
+      res.writeHead(200, {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${articleId}.txt"`,
+        "Content-Length": content.length,
+        "Access-Control-Allow-Origin": "*",
+      });
+      res.end(content);
+    } catch {
+      jsonResponse(res, 404, { error: "Document not found" });
+    }
     return;
   }
 
@@ -133,4 +138,4 @@ server.listen(PORT, () => {
   console.log(`vector-search-demo server running at http://localhost:${PORT}`);
 });
 
-export { search, searchDocuments, DOCUMENTS };
+export { search, searchDocuments };

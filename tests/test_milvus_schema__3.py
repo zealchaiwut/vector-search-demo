@@ -21,7 +21,8 @@ import subprocess
 import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCHEMA_PATH = os.path.join(REPO_ROOT, "src", "milvus", "schema.js")
+# schema.ts is the TypeScript source; tests import from the compiled output
+SCHEMA_PATH = os.path.join(REPO_ROOT, "dist", "milvus", "schema.js")
 INIT_CMD_PATH = os.path.join(REPO_ROOT, "src", "commands", "init.js")
 CLI_PATH = os.path.join(REPO_ROOT, "src", "cli.js")
 
@@ -70,8 +71,8 @@ def run_cli(args, timeout=30, env_extra=None):
 
 
 def test_milvus_schema__module_exists():
-    # AC1: src/milvus/schema.js must exist
-    assert os.path.isfile(SCHEMA_PATH), f"src/milvus/schema.js not found at {SCHEMA_PATH}"
+    # AC1: dist/milvus/schema.js (compiled from schema.ts) must exist
+    assert os.path.isfile(SCHEMA_PATH), f"dist/milvus/schema.js not found at {SCHEMA_PATH}"
 
 
 def test_milvus_schema__exports_createCollection():
@@ -121,12 +122,12 @@ process.stdout.write(JSON.stringify(COLLECTION_SCHEMA));
     )
 
     field_names = [f["name"] for f in schema["fields"]]
-    for required in ["id", "doc_id", "chunk_id", "title", "text", "attachment_name", "embedding"]:
+    for required in ["id", "headline", "details", "attachment_url", "embedding"]:
         assert required in field_names, f"Field '{required}' missing from schema. Got: {field_names}"
 
     id_field = next(f for f in schema["fields"] if f["name"] == "id")
     assert id_field.get("is_primary_key") is True, "id field must be primary key"
-    assert id_field.get("autoID") is True, "id field must have autoID=true"
+    assert id_field.get("autoID") is False, "id field must have autoID=false"
 
     emb_field = next(f for f in schema["fields"] if f["name"] == "embedding")
     assert emb_field.get("dim") == 384, (

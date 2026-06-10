@@ -146,32 +146,32 @@ def test_ac1_server_search_endpoint_returns_json():
 # AC2 — Cards show title and snippet with correct field names
 # ---------------------------------------------------------------------------
 
-def test_ac2_html_references_title_field():
-    """JS must read a field named 'title' from each result."""
+def test_ac2_html_references_headline_field():
+    """JS must read a field named 'headline' from each result."""
     src = _html_source()
-    assert re.search(r'\.title\b|["\'`]title["\'`]', src), \
-        "No 'title' field reference found in index.html JS"
+    assert re.search(r'\.headline\b|["\'`]headline["\'`]', src), \
+        "No 'headline' field reference found in index.html JS"
 
 
-def test_ac2_html_references_snippet_field():
-    """JS must read a field named 'snippet' from each result."""
+def test_ac2_html_references_details_field():
+    """JS must read a field named 'details' from each result."""
     src = _html_source()
-    assert re.search(r'\.snippet\b|["\'`]snippet["\'`]', src), \
-        "No 'snippet' field reference found in index.html JS"
+    assert re.search(r'\.details\b|["\'`]details["\'`]', src), \
+        "No 'details' field reference found in index.html JS"
 
 
-def test_ac2_server_returns_title_and_snippet():
-    """API /search response must include 'title' and 'snippet' fields per result."""
+def test_ac2_server_returns_headline_and_details():
+    """API /search response must include 'headline' and 'details' fields per result."""
     import requests
     port = _find_free_port()
-    sample = [{"doc_id": "doc-001", "title": "Vector Search Intro", "snippet": "A brief intro.", "score": 0.85}]
+    sample = [{"id": "article-001", "headline": "Vector Search Intro", "details": "A brief intro.", "score": 0.85, "attachment_url": "/download/article-001"}]
     srv = _start_mock_api(port, results_factory=lambda _q: sample)
     try:
         resp = requests.get(f"http://localhost:{port}/search?q=vector", timeout=5)
         results = resp.json()["results"]
         assert len(results) > 0
-        assert "title" in results[0], "Result missing 'title' field"
-        assert "snippet" in results[0], "Result missing 'snippet' field"
+        assert "headline" in results[0], "Result missing 'headline' field"
+        assert "details" in results[0], "Result missing 'details' field"
     finally:
         srv.shutdown()
 
@@ -220,19 +220,19 @@ def test_ac4_html_has_download_button():
     assert has_download, "No Download button/link found in index.html"
 
 
-def test_ac4_download_url_uses_doc_id():
-    """JS must build the download URL as /download/<doc_id>."""
+def test_ac4_download_url_uses_attachment_url():
+    """JS must use attachment_url (or build /download/<id>) for the Download link."""
     src = _html_source()
-    has_download_url = re.search(r'/download/|download.*doc_id|doc_id.*download', src, re.IGNORECASE)
+    has_download_url = re.search(r'/download/|attachment_url|\.id\b', src, re.IGNORECASE)
     assert has_download_url, \
-        "No /download/:docId URL pattern found; Download button must use /download/<doc_id>"
+        "No /download/ URL pattern found; Download button must use attachment_url or /download/<id>"
 
 
-def test_ac4_html_references_doc_id_field():
-    """JS must read doc_id (or equivalent) from each result for the download URL."""
+def test_ac4_html_references_id_field():
+    """JS must read id from each result for display."""
     src = _html_source()
-    has_doc_id = re.search(r'doc_id|docId|["\'`]id["\'`]', src)
-    assert has_doc_id, "No doc_id/docId field reference found in index.html"
+    has_id = re.search(r'\.id\b|articleId|["\'`]id["\'`]', src)
+    assert has_id, "No id field reference found in index.html"
 
 
 # ---------------------------------------------------------------------------
@@ -281,20 +281,19 @@ def test_ac7_no_undefined_field_reads():
     """All field names used in card rendering must exist in the expected API shape."""
     src = _html_source()
     # Fields the API returns (from AC2, AC3, AC4)
-    expected_fields = {"title", "snippet", "score", "doc_id"}
+    expected_fields = {"headline", "details", "score", "id"}
     # Look for any obvious .fieldName access that is NOT in expected_fields
     # Extract .something accesses in JS
     accessed = set(re.findall(r'\.\b([a-zA-Z_][a-zA-Z0-9_]*)\b', src))
     # Suspicious fields: ones that look like they're reading result data but
     # don't match known API fields — specifically, old/wrong names
-    wrong_names = {"name", "description", "relevance", "similarity", "id", "documentId"}
+    wrong_names = {"name", "description", "relevance", "similarity", "documentId"}
     suspicious = accessed & wrong_names
     # If suspicious field AND the matching correct field is absent, that's a bug
-    # e.g., if code uses .name but NOT .title
-    if "name" in suspicious and not re.search(r'\.title\b', src):
-        pytest.fail("index.html uses .name but not .title — likely wrong field name")
-    if "description" in suspicious and not re.search(r'\.snippet\b', src):
-        pytest.fail("index.html uses .description but not .snippet — likely wrong field name")
+    if "name" in suspicious and not re.search(r'\.headline\b', src):
+        pytest.fail("index.html uses .name but not .headline — likely wrong field name")
+    if "description" in suspicious and not re.search(r'\.details\b', src):
+        pytest.fail("index.html uses .description but not .details — likely wrong field name")
 
 
 # ---------------------------------------------------------------------------
@@ -303,14 +302,14 @@ def test_ac7_no_undefined_field_reads():
 
 def test_ac8_ui_fields_match_api_fields():
     """
-    The fields consumed by the UI (title, snippet, score, doc_id) must match
+    The fields consumed by the UI (headline, details, score, id) must match
     the actual keys returned by the /search API endpoint.
     """
     import requests
     port = _find_free_port()
     sample = [
-        {"doc_id": "doc-001", "title": "T1", "snippet": "S1", "score": 0.9},
-        {"doc_id": "doc-002", "title": "T2", "snippet": "S2", "score": 0.5},
+        {"id": "article-001", "headline": "T1", "details": "S1", "score": 0.9, "attachment_url": "/download/article-001"},
+        {"id": "article-002", "headline": "T2", "details": "S2", "score": 0.5, "attachment_url": "/download/article-002"},
     ]
     srv = _start_mock_api(port, results_factory=lambda _q: sample)
     try:
@@ -318,7 +317,7 @@ def test_ac8_ui_fields_match_api_fields():
         results = resp.json()["results"]
         assert len(results) > 0
         first = results[0]
-        required_keys = {"title", "snippet", "score", "doc_id"}
+        required_keys = {"headline", "details", "score", "id"}
         missing = required_keys - set(first.keys())
         assert not missing, f"API result missing required fields: {missing}"
     finally:
@@ -331,7 +330,7 @@ def test_ac8_real_server_search_returns_correct_shape():
     # Verify by reading server source: it must define the response shape
     with open(SERVER_MJS) as f:
         server_src = f.read()
-    required = ["title", "snippet", "score", "doc_id"]
+    required = ["headline", "details", "score", "id"]
     for field in required:
         assert field in server_src, \
             f"src/server.mjs missing field '{field}' in response — UI expects it"
@@ -364,13 +363,13 @@ def test_search_ui__query_returns_results_array(uat_client):
     assert len(data["results"]) > 0
 
 
-def test_search_ui__results_have_title_and_snippet(uat_client):
-    # AC2: each result has 'title' and 'snippet' string fields
+def test_search_ui__results_have_headline_and_details(uat_client):
+    # AC2: each result has 'headline' and 'details' string fields
     r = uat_client.get("/search", params={"q": "embedding"})
     assert r.status_code == 200
     for item in r.json()["results"]:
-        assert isinstance(item.get("title"), str)
-        assert isinstance(item.get("snippet"), str)
+        assert isinstance(item.get("headline"), str)
+        assert isinstance(item.get("details"), str)
 
 
 def test_search_ui__results_have_score_in_0_to_1_range(uat_client):
@@ -383,14 +382,14 @@ def test_search_ui__results_have_score_in_0_to_1_range(uat_client):
 
 
 def test_search_ui__download_endpoint_returns_file(uat_client):
-    # AC4: GET /download/:docId returns attachment
-    r = uat_client.get("/download/doc-001")
+    # AC4: GET /download/:articleId returns attachment
+    r = uat_client.get("/download/article-001")
     assert r.status_code == 200
     assert "attachment" in r.headers.get("content-disposition", "").lower()
 
 
 def test_search_ui__download_unknown_doc_returns_404(uat_client):
-    # AC4 edge: unknown doc_id returns 404
+    # AC4 edge: unknown id returns 404
     r = uat_client.get("/download/does-not-exist-xyz")
     assert r.status_code == 404
 
@@ -403,12 +402,12 @@ def test_search_ui__no_match_query_returns_empty_results(uat_client):
 
 
 def test_search_ui__api_response_shape_matches_ui_expectations(uat_client):
-    # AC8: verify all four UI-consumed fields are present
+    # AC8: verify all UI-consumed fields are present
     r = uat_client.get("/search", params={"q": "vector"})
     assert r.status_code == 200
     results = r.json()["results"]
     assert len(results) > 0
-    required = {"doc_id", "title", "snippet", "score"}
+    required = {"id", "headline", "details", "score"}
     for item in results:
         missing = required - set(item.keys())
         assert not missing, f"Missing fields: {missing}"

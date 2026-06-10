@@ -16,32 +16,32 @@ const K = parseInt(process.env.K ?? "5", 10);
 const RECALL_THRESHOLD = parseFloat(process.env.RECALL_THRESHOLD ?? "0.8");
 
 // Hardcoded query fixtures — each maps a natural-language query to one or more
-// expected doc_id values that should appear in the top-K results when the
+// expected article id values that should appear in the top-K results when the
 // collection is fully ingested.
 const QUERIES = [
   {
     "query": "what is vector search",
-    "expected": ["doc-001"],
+    "expected": ["article-001"],
   },
   {
     "query": "semantic similarity and embedding models",
-    "expected": ["doc-002"],
+    "expected": ["article-002"],
   },
   {
     "query": "approximate nearest neighbor algorithms",
-    "expected": ["doc-003"],
+    "expected": ["article-003"],
   },
   {
     "query": "milvus vector database setup",
-    "expected": ["doc-004"],
+    "expected": ["article-004"],
   },
   {
     "query": "transformer sentence embeddings MiniLM",
-    "expected": ["doc-005"],
+    "expected": ["article-005"],
   },
   {
     "query": "end to end semantic search pipeline",
-    "expected": ["doc-006"],
+    "expected": ["article-006"],
   },
 ];
 
@@ -64,7 +64,7 @@ async function main() {
 
     try {
       const results = await searchDocuments(query, K);
-      returnedIds = results.map((r) => r.doc_id ?? r.id ?? "").filter(Boolean);
+      returnedIds = results.map((r) => r.id ?? "").filter(Boolean);
       isHit = expected.some((id) => returnedIds.includes(id));
     } catch (err) {
       // Search backend unavailable or errored — treat as miss

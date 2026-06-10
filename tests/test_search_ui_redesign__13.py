@@ -263,18 +263,18 @@ def test_ac8_fetch_search_endpoint():
         "No /search?q= call found in JS"
 
 
-def test_ac8_card_shows_title():
-    """Each result card must display the document title."""
+def test_ac8_card_shows_headline():
+    """Each result card must display the article headline."""
     src = _src()
-    assert re.search(r'\.title\b|result\.title|item\.title', src), \
-        "No title field rendered in result card"
+    assert re.search(r'\.headline\b|result\.headline|item\.headline', src), \
+        "No headline field rendered in result card"
 
 
-def test_ac8_card_shows_text():
-    """Each result card must display document text (snippet/text field)."""
+def test_ac8_card_shows_details():
+    """Each result card must display article details/text field."""
     src = _src()
-    assert re.search(r'\.text\b|\.snippet\b|doc\.text|result\.text|item\.text|item\.snippet', src), \
-        "No text/snippet field rendered in result card"
+    assert re.search(r'\.details\b|doc\.details|result\.details|item\.details', src), \
+        "No details field rendered in result card"
 
 
 def test_ac8_card_shows_relevance_bar_with_label():
@@ -284,14 +284,14 @@ def test_ac8_card_shows_relevance_bar_with_label():
         "No 'relevance N%' label found for relevance bar"
 
 
-def test_ac8_card_shows_doc_id_in_mono():
-    """Doc ID must be displayed using mono font class or var."""
+def test_ac8_card_shows_article_id_in_mono():
+    """Article ID must be displayed using mono font class or var."""
     src = _src()
     has_mono_id = (
-        re.search(r'docid|doc-id|doc_id.*mono|mono.*doc', src, re.IGNORECASE) is not None
-        or re.search(r'class=["\'][^"\']*docid[^"\']*["\']|class=["\'][^"\']*doc-id[^"\']*["\']', src) is not None
+        re.search(r'docid|article.*id|articleId|class=["\'][^"\']*docid', src, re.IGNORECASE) is not None
+        or re.search(r'class=["\'][^"\']*docid[^"\']*["\']', src) is not None
     )
-    assert has_mono_id, "Doc ID not displayed in mono font or no docid class"
+    assert has_mono_id, "Article ID not displayed in mono font or no docid class"
 
 
 def test_ac8_card_has_attachment_action():

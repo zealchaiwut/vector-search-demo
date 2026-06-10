@@ -257,22 +257,22 @@
     const top = Math.max(...results.map(r => r.score), 0);
     resultsEl.innerHTML = results.map(r => {
       const pct = top > 0 ? Math.round(r.score * 100 / top) : 0;
-      const title    = r.title   ?? "(untitled)";
-      const text     = r.snippet ?? r.text ?? "";
-      const doc_id   = r.doc_id  ?? "";
-      const dlUrl    = `/download/${encodeURIComponent(doc_id)}`;
+      const headline      = r.headline ?? "(untitled)";
+      const details       = r.details ?? "";
+      const articleId     = r.id ?? "";
+      const dlUrl         = r.attachment_url ?? `/download/${encodeURIComponent(articleId)}`;
       return `
         <article class="card">
           <div class="card-head">
-            <h2>${escapeHtml(title)}</h2>
+            <h2>${escapeHtml(headline)}</h2>
             <div class="rel">
               <div class="bar"><span data-pct="${pct}"></span></div>
               <div class="label">relevance ${pct}%</div>
             </div>
           </div>
-          <p class="doc-text">${escapeHtml(text)}</p>
+          <p class="doc-text">${escapeHtml(details)}</p>
           <div class="card-foot">
-            <span class="docid">${escapeHtml(doc_id)}</span>
+            <span class="docid">${escapeHtml(articleId)}</span>
             <a class="download" href="${dlUrl}" download>Download</a>
           </div>
         </article>`;
