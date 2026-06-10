@@ -51,3 +51,40 @@ export function insertRows(rows) {
 export function entityCount() {
   return load().length;
 }
+
+export function listArticles() {
+  const rows = load();
+  const seen = new Map();
+  for (const row of rows) {
+    const articleId = row.id.split(":")[0];
+    if (!seen.has(articleId)) {
+      seen.set(articleId, {
+        id: articleId,
+        headline: row.headline,
+        details: row.details,
+        attachment_url: row.attachment_url,
+      });
+    }
+  }
+  return [...seen.values()];
+}
+
+export function getArticle(articleId) {
+  const rows = load();
+  const row = rows.find((r) => r.id.split(":")[0] === articleId);
+  if (!row) return null;
+  return {
+    id: articleId,
+    headline: row.headline,
+    details: row.details,
+    attachment_url: row.attachment_url,
+  };
+}
+
+export function deleteArticle(articleId) {
+  const existing = load();
+  const remaining = existing.filter((r) => r.id.split(":")[0] !== articleId);
+  if (remaining.length === existing.length) return false;
+  persist(remaining);
+  return true;
+}

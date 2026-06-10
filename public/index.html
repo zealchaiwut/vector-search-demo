@@ -280,6 +280,144 @@
     border: 1px solid #fca5a5;
     color: var(--red);
   }
+
+  /* Articles list section */
+  .articles-section {
+    margin-top: 52px;
+    border-top: 1px solid var(--line);
+    padding-top: 36px;
+  }
+  .articles-section h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    margin: 0 0 20px;
+  }
+  .article-list { display: flex; flex-direction: column; gap: 10px; }
+  .article-row {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+  }
+  .article-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .article-row-title {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 16px;
+    margin: 0;
+    flex: 1;
+  }
+  .article-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .btn-edit, .btn-delete {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    background: var(--surface);
+  }
+  .btn-edit { color: var(--accent); }
+  .btn-edit:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .btn-delete { color: var(--red); }
+  .btn-delete:hover { background: #fef2f2; border-color: #fca5a5; }
+  .article-row-details {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 6px 0 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Inline edit form inside article row */
+  .edit-form {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+  .edit-form .field { display: flex; flex-direction: column; gap: 4px; }
+  .edit-form .field label { font-size: 12px; font-weight: 500; color: var(--ink); }
+  .edit-form .field input,
+  .edit-form .field textarea {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: 0;
+  }
+  .edit-form .field textarea { resize: vertical; min-height: 70px; }
+  .edit-form .field input:focus,
+  .edit-form .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .edit-form-actions { display: flex; gap: 8px; }
+  .btn-save {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 14px;
+    padding: 0 18px;
+    height: 36px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-save:hover { filter: brightness(1.07); }
+  .btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-cancel {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    padding: 0 14px;
+    height: 36px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .edit-status {
+    font-size: 13px;
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: none;
+  }
+  .edit-status.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .edit-status.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+  .articles-empty {
+    color: var(--muted);
+    font-size: 14px;
+    padding: 24px 0;
+  }
 </style>
 </head>
 <body>
@@ -321,6 +459,13 @@
       <button type="submit" id="add-btn">Submit</button>
     </form>
     <div class="add-feedback" id="add-feedback" aria-live="polite"></div>
+  </section>
+
+  <section class="articles-section" aria-label="All Articles">
+    <h2>All Articles</h2>
+    <div class="article-list" id="article-list">
+      <p class="articles-empty">Loading articles…</p>
+    </div>
   </section>
 </div>
 
@@ -461,12 +606,162 @@
       const data = await resp.json();
       showAddFeedback("success", `Article created. ID: ${escapeHtml(data.id)}`);
       addForm.reset();
+      loadArticles();
     } catch (err) {
       showAddFeedback("error", err.message);
     } finally {
       addBtn.disabled = false;
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Articles list — load, edit, delete
+  // ---------------------------------------------------------------------------
+
+  const articleListEl = document.getElementById("article-list");
+
+  function buildEditForm(article, rowEl) {
+    const form = document.createElement("div");
+    form.className = "edit-form";
+    form.innerHTML = `
+      <div class="field">
+        <label>Headline</label>
+        <input class="ef-headline" type="text" value="${escapeHtml(article.headline)}" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Details</label>
+        <textarea class="ef-details">${escapeHtml(article.details)}</textarea>
+      </div>
+      <div class="field">
+        <label>Attachment URL</label>
+        <input class="ef-url" type="url" value="${escapeHtml(article.attachment_url || "")}" autocomplete="off" />
+      </div>
+      <div class="edit-form-actions">
+        <button class="btn-save" type="button">Save</button>
+        <button class="btn-cancel" type="button">Cancel</button>
+      </div>
+      <div class="edit-status" aria-live="polite"></div>
+    `;
+
+    const saveBtn = form.querySelector(".btn-save");
+    const cancelBtn = form.querySelector(".btn-cancel");
+    const statusEl = form.querySelector(".edit-status");
+
+    cancelBtn.addEventListener("click", () => form.remove());
+
+    saveBtn.addEventListener("click", async () => {
+      const headline = form.querySelector(".ef-headline").value.trim();
+      const details = form.querySelector(".ef-details").value.trim();
+      const attachment_url = form.querySelector(".ef-url").value.trim();
+      if (!headline || !details) {
+        statusEl.className = "edit-status error";
+        statusEl.textContent = "Headline and details are required.";
+        return;
+      }
+      saveBtn.disabled = true;
+      statusEl.className = "edit-status";
+      statusEl.textContent = "";
+      try {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(article.id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ headline, details, attachment_url }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error ?? `Server returned ${resp.status}`);
+        }
+        // Update the DOM without a full page reload
+        rowEl.querySelector(".article-row-title").textContent = headline;
+        rowEl.querySelector(".article-row-details").textContent = details;
+        rowEl.dataset.headline = headline;
+        rowEl.dataset.details = details;
+        rowEl.dataset.attachmentUrl = attachment_url;
+        form.remove();
+      } catch (err) {
+        statusEl.className = "edit-status error";
+        statusEl.textContent = err.message;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    return form;
+  }
+
+  function renderArticleRow(article) {
+    const row = document.createElement("div");
+    row.className = "article-row";
+    row.dataset.id = article.id;
+    row.dataset.headline = article.headline;
+    row.dataset.details = article.details;
+    row.dataset.attachmentUrl = article.attachment_url || "";
+
+    row.innerHTML = `
+      <div class="article-row-head">
+        <p class="article-row-title">${escapeHtml(article.headline)}</p>
+        <div class="article-row-actions">
+          <button class="btn-edit" type="button" aria-label="Edit article">Edit</button>
+          <button class="btn-delete" type="button" aria-label="Delete article">Delete</button>
+        </div>
+      </div>
+      <p class="article-row-details">${escapeHtml(article.details)}</p>
+    `;
+
+    row.querySelector(".btn-edit").addEventListener("click", () => {
+      const existing = row.querySelector(".edit-form");
+      if (existing) { existing.remove(); return; }
+      const currentArticle = {
+        id: row.dataset.id,
+        headline: row.dataset.headline,
+        details: row.dataset.details,
+        attachment_url: row.dataset.attachmentUrl,
+      };
+      row.appendChild(buildEditForm(currentArticle, row));
+    });
+
+    row.querySelector(".btn-delete").addEventListener("click", async () => {
+      if (!confirm(`Delete article "${article.headline}"? This cannot be undone.`)) return;
+      try {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(article.id)}`, {
+          method: "DELETE",
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error ?? `Server returned ${resp.status}`);
+        }
+        row.remove();
+        if (articleListEl.children.length === 0) {
+          articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Add one above.</p>`;
+        }
+      } catch (err) {
+        alert(`Delete failed: ${err.message}`);
+      }
+    });
+
+    return row;
+  }
+
+  async function loadArticles() {
+    try {
+      const resp = await fetch(`${API_BASE}/articles`);
+      if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+      const data = await resp.json();
+      const articles = Array.isArray(data.articles) ? data.articles : [];
+      articleListEl.innerHTML = "";
+      if (articles.length === 0) {
+        articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Add one above.</p>`;
+        return;
+      }
+      for (const article of articles) {
+        articleListEl.appendChild(renderArticleRow(article));
+      }
+    } catch (err) {
+      articleListEl.innerHTML = `<p class="articles-empty" style="color:var(--red)">Failed to load articles: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  loadArticles();
 </script>
 </body>
 </html>
