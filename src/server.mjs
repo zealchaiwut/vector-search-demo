@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { searchDocuments } from "./core/search.js";
 import { batchEmbed } from "./data/embedder.js";
-import { upsertRows } from "./data/collection.js";
+import { upsertRows, getArticle, deleteArticle, listArticles } from "./data/collection.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -77,7 +77,7 @@ async function handleRequest(req, res) {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     });
     res.end();
@@ -106,6 +106,63 @@ async function handleRequest(req, res) {
     const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
     upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
     jsonResponse(res, 201, { id });
+    return;
+  }
+
+  // GET /articles — list all articles
+  if (req.method === "GET" && pathname === "/articles") {
+    const articles = listArticles();
+    jsonResponse(res, 200, { articles });
+    return;
+  }
+
+  // PUT /articles/:id — update an existing article
+  if (req.method === "PUT" && pathname.startsWith("/articles/")) {
+    const articleId = pathname.slice("/articles/".length);
+    if (!articleId) {
+      jsonResponse(res, 400, { error: "Article id is required" });
+      return;
+    }
+    const existing = getArticle(articleId);
+    if (!existing) {
+      jsonResponse(res, 404, { error: "Article not found" });
+      return;
+    }
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let payload;
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      jsonResponse(res, 400, { error: "Invalid JSON" });
+      return;
+    }
+    const headline = (payload.headline ?? "").trim();
+    const details = (payload.details ?? "").trim();
+    const attachment_url = (payload.attachment_url ?? "").trim();
+    if (!headline || !details) {
+      jsonResponse(res, 400, { error: "headline and details are required" });
+      return;
+    }
+    const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
+    upsertRows([{ id: `${articleId}:0`, headline, details, attachment_url, embedding }]);
+    jsonResponse(res, 200, { id: articleId });
+    return;
+  }
+
+  // DELETE /articles/:id — remove an article
+  if (req.method === "DELETE" && pathname.startsWith("/articles/")) {
+    const articleId = pathname.slice("/articles/".length);
+    if (!articleId) {
+      jsonResponse(res, 400, { error: "Article id is required" });
+      return;
+    }
+    const removed = deleteArticle(articleId);
+    if (!removed) {
+      jsonResponse(res, 404, { error: "Article not found" });
+      return;
+    }
+    jsonResponse(res, 200, { id: articleId });
     return;
   }
 
