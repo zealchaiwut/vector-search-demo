@@ -203,6 +203,83 @@
     .rel { text-align: left; }
     h1 { font-size: 25px; }
   }
+
+  /* Add Article form */
+  .add-section {
+    margin-top: 52px;
+    border-top: 1px solid var(--line);
+    padding-top: 36px;
+  }
+  .add-section h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    margin: 0 0 20px;
+  }
+  .add-form { display: flex; flex-direction: column; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .field input,
+  .field textarea {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: 0;
+  }
+  .field textarea { resize: vertical; min-height: 90px; }
+  .field input:focus,
+  .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .add-form button[type="submit"] {
+    align-self: flex-start;
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .add-form button[type="submit"]:hover { filter: brightness(1.07); }
+  .add-form button[type="submit"]:focus-visible {
+    outline: 3px solid var(--accent-soft);
+    outline-offset: 2px;
+  }
+  .add-form button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
+  .add-feedback {
+    font-size: 14px;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: none;
+  }
+  .add-feedback.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .add-feedback.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
 </style>
 </head>
 <body>
@@ -225,6 +302,26 @@
 
   <div class="status" id="status" aria-live="polite"></div>
   <div class="results" id="results"></div>
+
+  <section class="add-section" aria-label="Add Article">
+    <h2>Add Article</h2>
+    <form class="add-form" id="add-form" novalidate>
+      <div class="field">
+        <label for="art-headline">Headline</label>
+        <input id="art-headline" name="headline" type="text" placeholder="Article headline" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="art-details">Details</label>
+        <textarea id="art-details" name="details" placeholder="Article body / details"></textarea>
+      </div>
+      <div class="field">
+        <label for="art-attachment-url">Attachment URL</label>
+        <input id="art-attachment-url" name="attachment_url" type="url" placeholder="https://example.com/file.pdf" autocomplete="off" />
+      </div>
+      <button type="submit" id="add-btn">Submit</button>
+    </form>
+    <div class="add-feedback" id="add-feedback" aria-live="polite"></div>
+  </section>
 </div>
 
 <script>
@@ -318,6 +415,56 @@
     if (e.key === "Enter") {
       const query = input.value.trim();
       if (query) doSearch(query);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Add Article form
+  // ---------------------------------------------------------------------------
+
+  const addForm      = document.getElementById("add-form");
+  const addBtn       = document.getElementById("add-btn");
+  const addFeedback  = document.getElementById("add-feedback");
+
+  function showAddFeedback(type, msg) {
+    addFeedback.className = `add-feedback ${type}`;
+    addFeedback.textContent = msg;
+  }
+
+  addForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const headline      = addForm.elements["headline"].value.trim();
+    const details       = addForm.elements["details"].value.trim();
+    const attachment_url = addForm.elements["attachment_url"].value.trim();
+
+    if (!headline) {
+      showAddFeedback("error", "Headline is required.");
+      return;
+    }
+    if (!details) {
+      showAddFeedback("error", "Details are required.");
+      return;
+    }
+
+    addBtn.disabled = true;
+    addFeedback.className = "add-feedback";
+    addFeedback.textContent = "";
+
+    try {
+      const createOpts = { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ headline, details, attachment_url }) };
+      createOpts.method = "POST";
+      const resp = await fetch(`${API_BASE}/articles`, createOpts);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error ?? `Server returned ${resp.status}`);
+      }
+      const data = await resp.json();
+      showAddFeedback("success", `Article created. ID: ${escapeHtml(data.id)}`);
+      addForm.reset();
+    } catch (err) {
+      showAddFeedback("error", err.message);
+    } finally {
+      addBtn.disabled = false;
     }
   });
 </script>
