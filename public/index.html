@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vector Search Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #ffffff;
+      --surface: #ffffff;
+      --surface-2: #f6f7f9;
+      --border: #e5e7eb;
+      --text: #0f1115;
+      --text-muted: #5b6470;
+      --text-sub: #8b93a1;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --red: #dc2626;
+      --radius: 8px;
+      --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 24px;
+    }
+    header h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    header p {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 32px 24px 64px;
+    }
+
+    /* ── Search form ── */
+    .search-form {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+    }
+    .search-form input {
+      flex: 1;
+      height: 40px;
+      padding: 0 12px;
+      font-size: 0.9375rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-form input:focus {
+      border-color: var(--blue);
+    }
+    .search-form button {
+      height: 40px;
+      padding: 0 20px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .search-form button:hover { opacity: 0.88; }
+    .search-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Status messages ── */
+    #status {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+      min-height: 20px;
+    }
+
+    /* ── States ── */
+    .state-message {
+      padding: 40px 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9375rem;
+    }
+    .state-message.error { color: var(--red); }
+    .state-message strong { display: block; font-size: 1rem; margin-bottom: 6px; color: var(--text); }
+    .state-message.error strong { color: var(--red); }
+
+    /* ── Result cards ── */
+    #results { display: flex; flex-direction: column; gap: 12px; }
+
+    .result-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      background: var(--surface);
+      transition: border-color 0.15s;
+    }
+    .result-card:hover { border-color: #c1c7d0; }
+
+    .card-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .card-title {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .card-score {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-sub);
+      white-space: nowrap;
+    }
+
+    .card-snippet {
+      font-size: 0.8125rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+      margin-bottom: 12px;
+    }
+
+    /* ── Relevance meter ── */
+    .relevance-meter {
+      height: 4px;
+      background: var(--surface-2);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .relevance-fill {
+      height: 100%;
+      background: var(--blue);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    /* ── Card footer ── */
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .doc-id {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-sub);
+    }
+    .btn-download {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      padding: 5px 12px;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn-download:hover { background: #eceef1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Vector Search Demo</h1>
+  <p>Semantic similarity search over a small document corpus</p>
+</header>
+
+<main>
+  <form class="search-form" id="search-form">
+    <input
+      type="text"
+      id="query-input"
+      placeholder="e.g. how does vector search work?"
+      autocomplete="off"
+      required
+    />
+    <button type="submit" id="search-btn">Search</button>
+  </form>
+
+  <div id="status"></div>
+  <div id="results"></div>
+</main>
+
+<script type="module">
+  const API_BASE = "";   // same-origin; override with full URL if needed
+
+  const form       = document.getElementById("search-form");
+  const queryInput = document.getElementById("query-input");
+  const searchBtn  = document.getElementById("search-btn");
+  const statusEl   = document.getElementById("status");
+  const resultsEl  = document.getElementById("results");
+
+  // ── Render helpers ──────────────────────────────────────────────────────
+
+  function renderEmpty() {
+    resultsEl.innerHTML = `
+      <div class="state-message">
+        <strong>No results found</strong>
+        Try a different query — e.g. "vector search" or "embedding models".
+      </div>`;
+  }
+
+  function renderError(message) {
+    resultsEl.innerHTML = `
+      <div class="state-message error">
+        <strong>Unable to reach the search service</strong>
+        ${escapeHtml(message)}
+      </div>`;
+  }
+
+  function renderResults(results) {
+    resultsEl.innerHTML = results.map((result) => {
+      const title   = result.title   ?? "(untitled)";
+      const snippet = result.snippet ?? "";
+      const score   = typeof result.score === "number" ? result.score : 0;
+      const doc_id  = result.doc_id  ?? "";
+
+      const fillPct = `${Math.round(score * 100)}%`;
+      const scoreLabel = score.toFixed(3);
+      const downloadUrl = `/download/${encodeURIComponent(doc_id)}`;
+
+      return `
+        <div class="result-card">
+          <div class="card-header">
+            <span class="card-title">${escapeHtml(title)}</span>
+            <span class="card-score">score ${scoreLabel}</span>
+          </div>
+          <p class="card-snippet">${escapeHtml(snippet)}</p>
+          <div class="relevance-meter" title="Relevance: ${scoreLabel}">
+            <div class="relevance-fill" style="width: ${fillPct}"></div>
+          </div>
+          <div class="card-footer">
+            <span class="doc-id">${escapeHtml(doc_id)}</span>
+            <a class="btn-download" href="${downloadUrl}" download>Download</a>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  function setStatus(text) {
+    statusEl.textContent = text;
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // ── Search handler ───────────────────────────────────────────────────────
+
+  async function doSearch(query) {
+    searchBtn.disabled = true;
+    setStatus("Searching…");
+    resultsEl.innerHTML = "";
+
+    const url = `${API_BASE}/search?q=${encodeURIComponent(query)}`;
+
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const results = Array.isArray(data.results) ? data.results : [];
+
+      if (results.length === 0) {
+        setStatus("");
+        renderEmpty();
+      } else {
+        setStatus(`${results.length} result${results.length === 1 ? "" : "s"}`);
+        renderResults(results);
+      }
+    } catch (err) {
+      setStatus("");
+      renderError(err.message);
+    } finally {
+      searchBtn.disabled = false;
+    }
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const query = queryInput.value.trim();
+    if (query) doSearch(query);
+  });
+</script>
+
+</body>
+</html>
