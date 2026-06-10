@@ -1,0 +1,12 @@
+{
+  "name": "vector-search-demo",
+  "version": "0.1.0",
+  "description": "End-to-end semantic vector search demo: embed, index, query, evaluate.",
+  "type": "module",
+  "scripts": {
+    "eval": "node src/eval/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
