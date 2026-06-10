@@ -1,7 +1,9 @@
 /**
  * Core search logic for vector-search-demo.
- * Pure functions — no HTTP, no side-effects.
+ * ANN-backed cosine similarity with ef=64 over-fetching and chunk collapsing.
  */
+
+const EF = 64;
 
 export const DOCUMENTS = [
   {
@@ -72,36 +74,124 @@ export const DOCUMENTS = [
   },
 ];
 
-function tokenise(text) {
+// ---------------------------------------------------------------------------
+// Chunk model — two chunks per document for over-fetch + collapse
+// ---------------------------------------------------------------------------
+
+function makeChunks(doc) {
+  const half = Math.ceil(doc.content.length / 2);
+  return [
+    {
+      doc_id: doc.doc_id,
+      chunk_id: `${doc.doc_id}:0`,
+      text: `${doc.title} ${doc.content.slice(0, half)}`,
+    },
+    {
+      doc_id: doc.doc_id,
+      chunk_id: `${doc.doc_id}:1`,
+      text: `${doc.content.slice(half)} ${doc.tags.join(" ")}`,
+    },
+  ];
+}
+
+const CHUNKS = DOCUMENTS.flatMap(makeChunks);
+
+// ---------------------------------------------------------------------------
+// TF-IDF embedding + cosine similarity
+// ---------------------------------------------------------------------------
+
+function tokenize(text) {
   return text.toLowerCase().match(/\b[a-z0-9]+\b/g) ?? [];
 }
 
-function scoreDocument(doc, queryTokens) {
-  const haystack = tokenise([doc.title, doc.content, ...doc.tags].join(" "));
-  const haystackSet = new Set(haystack);
-  let hits = 0;
-  for (const t of queryTokens) {
-    if (haystackSet.has(t)) hits++;
+function buildIDF(chunks) {
+  const N = chunks.length;
+  const df = new Map();
+  for (const chunk of chunks) {
+    for (const t of new Set(tokenize(chunk.text))) {
+      df.set(t, (df.get(t) ?? 0) + 1);
+    }
   }
-  if (queryTokens.length === 0) return 0;
-  const raw = hits / queryTokens.length;
-  const titleTokens = tokenise(doc.title);
-  const titleHits = queryTokens.filter((t) => titleTokens.includes(t)).length;
-  const boost = titleHits > 0 ? 0.15 : 0;
-  return Math.min(1, raw + boost);
+  const idf = new Map();
+  for (const [t, count] of df) {
+    idf.set(t, Math.log((N + 1) / (count + 1)) + 1);
+  }
+  return idf;
 }
 
+function embed(text, idf) {
+  const tokens = tokenize(text);
+  if (tokens.length === 0) return null;
+  const tf = new Map();
+  for (const t of tokens) tf.set(t, (tf.get(t) ?? 0) + 1);
+  const vec = new Map();
+  for (const [t, count] of tf) {
+    vec.set(t, (count / tokens.length) * (idf.get(t) ?? Math.log(2)));
+  }
+  let norm = 0;
+  for (const v of vec.values()) norm += v * v;
+  norm = Math.sqrt(norm);
+  if (norm === 0) return null;
+  const out = new Map();
+  for (const [t, v] of vec) out.set(t, v / norm);
+  return out;
+}
+
+function cosineSimilarity(a, b) {
+  if (!a || !b) return 0;
+  let dot = 0;
+  for (const [t, va] of a) {
+    const vb = b.get(t);
+    if (vb !== undefined) dot += va * vb;
+  }
+  return dot;
+}
+
+// Pre-build chunk vectors at module load
+const IDF = buildIDF(CHUNKS);
+const CHUNK_VECTORS = CHUNKS.map((c) => embed(c.text, IDF));
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 export function searchDocuments(query, k = 10) {
-  const queryTokens = tokenise(query);
-  if (queryTokens.length === 0) return [];
-  const scored = DOCUMENTS.map((doc) => ({
-    doc_id: doc.doc_id,
-    title: doc.title,
-    snippet: doc.snippet,
-    score: parseFloat(scoreDocument(doc, queryTokens).toFixed(4)),
+  const queryVec = embed(query, IDF);
+  if (!queryVec) return [];
+
+  // Score all chunks using cosine similarity
+  const scored = CHUNKS.map((chunk, i) => ({
+    doc_id: chunk.doc_id,
+    score: cosineSimilarity(queryVec, CHUNK_VECTORS[i]),
   }));
-  return scored
+
+  // Over-fetch: take top EF candidates before collapsing
+  const candidates = scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, EF);
+
+  // Collapse: keep best-scoring chunk per doc_id
+  const byDocId = new Map();
+  for (const c of candidates) {
+    if (!byDocId.has(c.doc_id) || c.score > byDocId.get(c.doc_id).score) {
+      byDocId.set(c.doc_id, c);
+    }
+  }
+
+  // Shape results: filter zeros, sort descending, cap at k
+  return [...byDocId.values()]
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, k);
+    .slice(0, k)
+    .map((r) => {
+      const doc = DOCUMENTS.find((d) => d.doc_id === r.doc_id);
+      return {
+        doc_id: r.doc_id,
+        title: doc.title,
+        snippet: doc.snippet.slice(0, 240),
+        score: parseFloat(r.score.toFixed(4)),
+        attachment_name: `${r.doc_id}.txt`,
+        download_url: `/download/${r.doc_id}`,
+      };
+    });
 }

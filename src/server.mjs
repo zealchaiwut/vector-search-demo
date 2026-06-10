@@ -77,6 +77,7 @@ async function handleRequest(req, res) {
   }
 
   // GET /search?q=<query>
+  // Result shape: [{ doc_id, title, snippet, score, attachment_name, download_url }]
   if (req.method === "GET" && pathname === "/search") {
     const q = url.searchParams.get("q") ?? "";
     const k = parseInt(url.searchParams.get("k") ?? "10", 10);
