@@ -3,6 +3,11 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 3.1 (2026-06-11)
+
+- #20: Add input validation and vector-article integrity check
+- #21: Replace Download button with external attachment link
+
 ## Sprint 2.1 (2026-06-10)
 
 - #13: Rebuild search results page to approved mock

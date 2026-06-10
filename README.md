@@ -79,6 +79,7 @@ node dist/cli.js ingest               # ingest the built-in corpus
 node dist/cli.js search <query...>    # search indexed documents (prints results)
 node dist/cli.js serve                # start the Fastify server
 node dist/cli.js ping                 # check Milvus connectivity (Docker required)
+node dist/cli.js verify               # check vector/article count integrity
 ```
 
 ## npm scripts
@@ -98,21 +99,26 @@ node dist/cli.js ping                 # check Milvus connectivity (Docker requir
 |--------|------|-------------|
 | `GET` | `/` | Serve search UI (`public/index.html`) |
 | `GET` | `/health` | `{"status":"ok"}` |
+| `GET` | `/health/integrity` | Compare article count vs. vector count |
 | `GET` | `/search?q=<query>&k=<n>` | Return top-k ranked result cards |
-| `GET` / `HEAD` | `/download/:docId` | Download the ingested source document as `.txt` |
+| `GET` / `HEAD` | `/download/:articleId` | Download the ingested source article as `.txt` |
+| `POST` | `/articles` | Create a new article (validated) |
+| `GET` | `/articles` | List all articles |
+| `PUT` | `/articles/:id` | Update an existing article (validated) |
+| `DELETE` | `/articles/:id` | Delete an article |
+| `POST` | `/articles/bulk` | Bulk-create articles; atomically rejected if any item fails validation |
 
-Result shape:
+Search result shape (`GET /search`):
 
 ```json
 {
   "results": [
     {
-      "doc_id": "doc-004",
-      "title": "...",
-      "snippet": "...",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "headline": "...",
+      "details": "...",
       "score": 0.1996,
-      "attachment_name": "doc-004.txt",
-      "download_url": "/download/doc-004",
+      "attachment_url": "https://example.com/file.pdf",
       "best_passage": {
         "text": "Single verbatim sentence most similar to the query.",
         "start_offset": 42,
@@ -123,10 +129,15 @@ Result shape:
 }
 ```
 
-`best_passage` is the highest-scoring sentence from the document (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full document text.
+`attachment_url` is the external URL for the attachment; results where `attachment_url` is null/empty do not render a link in the UI. `best_passage` is the highest-scoring sentence from the article (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full article text.
 
-`/download/:docId` serves files from `attachments/`, so a doc is only downloadable
-after `ingest` has run.
+Integrity check response (`GET /health/integrity`):
+
+```json
+{ "status": "ok", "articleCount": 42, "vectorCount": 42 }
+// or when counts differ:
+{ "status": "mismatch", "articleCount": 42, "vectorCount": 39, "delta": 3 }
+```
 
 ## Evaluation
 
