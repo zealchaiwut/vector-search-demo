@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "End-to-end semantic vector search demo: embed, index, query, evaluate.",
   "type": "module",
+  "bin": {
+    "commander": "src/cli.js"
+  },
   "scripts": {
     "start": "node src/server.mjs",
     "eval": "node src/eval/index.js"
