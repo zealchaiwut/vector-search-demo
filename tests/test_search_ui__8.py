@@ -335,3 +335,80 @@ def test_ac8_real_server_search_returns_correct_shape():
     for field in required:
         assert field in server_src, \
             f"src/server.mjs missing field '{field}' in response — UI expects it"
+
+
+# ---------------------------------------------------------------------------
+# UAT — Live server acceptance tests (httpx against running UAT instance)
+# These tests hit the real running UAT server; set UAT_BASE_URL env var.
+# ---------------------------------------------------------------------------
+
+import httpx as _httpx
+
+_UAT_BASE = os.environ.get("UAT_BASE_URL", "")
+
+
+@pytest.fixture
+def uat_client():
+    if not _UAT_BASE.startswith("http"):
+        pytest.skip("UAT_BASE_URL not set — skipping live server tests")
+    with _httpx.Client(base_url=_UAT_BASE, timeout=10.0) as c:
+        yield c
+
+
+def test_search_ui__query_returns_results_array(uat_client):
+    # AC1: GET /search?q=<query> returns 200 with non-empty results list
+    r = uat_client.get("/search", params={"q": "vector search"})
+    assert r.status_code == 200
+    data = r.json()
+    assert "results" in data and isinstance(data["results"], list)
+    assert len(data["results"]) > 0
+
+
+def test_search_ui__results_have_title_and_snippet(uat_client):
+    # AC2: each result has 'title' and 'snippet' string fields
+    r = uat_client.get("/search", params={"q": "embedding"})
+    assert r.status_code == 200
+    for item in r.json()["results"]:
+        assert isinstance(item.get("title"), str)
+        assert isinstance(item.get("snippet"), str)
+
+
+def test_search_ui__results_have_score_in_0_to_1_range(uat_client):
+    # AC3: each result has 'score' float between 0 and 1
+    r = uat_client.get("/search", params={"q": "semantic similarity"})
+    assert r.status_code == 200
+    for item in r.json()["results"]:
+        score = item.get("score")
+        assert isinstance(score, (int, float)) and 0 <= score <= 1
+
+
+def test_search_ui__download_endpoint_returns_file(uat_client):
+    # AC4: GET /download/:docId returns attachment
+    r = uat_client.get("/download/doc-001")
+    assert r.status_code == 200
+    assert "attachment" in r.headers.get("content-disposition", "").lower()
+
+
+def test_search_ui__download_unknown_doc_returns_404(uat_client):
+    # AC4 edge: unknown doc_id returns 404
+    r = uat_client.get("/download/does-not-exist-xyz")
+    assert r.status_code == 404
+
+
+def test_search_ui__no_match_query_returns_empty_results(uat_client):
+    # AC5: nonsense query returns results=[]
+    r = uat_client.get("/search", params={"q": "xyzabc123qwerty999nonsense"})
+    assert r.status_code == 200
+    assert r.json().get("results") == []
+
+
+def test_search_ui__api_response_shape_matches_ui_expectations(uat_client):
+    # AC8: verify all four UI-consumed fields are present
+    r = uat_client.get("/search", params={"q": "vector"})
+    assert r.status_code == 200
+    results = r.json()["results"]
+    assert len(results) > 0
+    required = {"doc_id", "title", "snippet", "score"}
+    for item in results:
+        missing = required - set(item.keys())
+        assert not missing, f"Missing fields: {missing}"
