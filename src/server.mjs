@@ -84,6 +84,43 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // POST /articles/bulk — create multiple articles from a parsed rows array
+  if (req.method === "POST" && pathname === "/articles/bulk") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let payload;
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      jsonResponse(res, 400, { error: "Invalid JSON" });
+      return;
+    }
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    const errors = [];
+    let succeeded = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const headline = (row.headline ?? "").trim();
+      const details = (row.details ?? "").trim();
+      const attachment_url = (row.attachment_url ?? "").trim();
+      if (!headline || !details) {
+        errors.push({ row: i, reason: "headline and details are required" });
+        continue;
+      }
+      const id = randomUUID();
+      const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
+      upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
+      succeeded++;
+    }
+    jsonResponse(res, 200, {
+      total: rows.length,
+      succeeded,
+      failed: errors.length,
+      errors,
+    });
+    return;
+  }
+
   // POST /articles — create a new article
   if (req.method === "POST" && pathname === "/articles") {
     let body = "";

@@ -281,6 +281,111 @@
     color: var(--red);
   }
 
+  /* Bulk Upload section */
+  .bulk-section {
+    margin-top: 52px;
+    border-top: 1px solid var(--line);
+    padding-top: 36px;
+  }
+  .bulk-section h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 22px;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+  }
+  .bulk-section > p {
+    margin: 0 0 20px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .bulk-dropzone {
+    border: 2px dashed var(--line);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    text-align: center;
+    background: var(--surface);
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+  .bulk-dropzone:hover,
+  .bulk-dropzone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .bulk-dropzone input[type="file"] {
+    display: none;
+  }
+  .bulk-dropzone-label {
+    display: block;
+    font-size: 14px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .bulk-dropzone-label strong {
+    color: var(--accent);
+  }
+  .bulk-filename {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    min-height: 16px;
+  }
+  .bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .btn-bulk-upload {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-bulk-upload:hover { filter: brightness(1.07); }
+  .btn-bulk-upload:disabled { opacity: 0.6; cursor: not-allowed; }
+  .bulk-feedback {
+    font-size: 14px;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: none;
+    margin-top: 14px;
+  }
+  .bulk-feedback.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .bulk-feedback.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+  .bulk-feedback.partial {
+    display: block;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    color: #92400e;
+  }
+  .bulk-error-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+    list-style: disc;
+  }
+  .bulk-error-list li { margin-bottom: 4px; }
+
   /* Articles list section */
   .articles-section {
     margin-top: 52px;
@@ -459,6 +564,22 @@
       <button type="submit" id="add-btn">Submit</button>
     </form>
     <div class="add-feedback" id="add-feedback" aria-live="polite"></div>
+  </section>
+
+  <section class="bulk-section" aria-label="Bulk Import Articles">
+    <h2>Bulk Import</h2>
+    <p>Upload a <strong>.json</strong> or <strong>.csv</strong> file. Each row must have <code>headline</code>, <code>details</code>, and <code>attachment_url</code> fields.</p>
+    <div class="bulk-dropzone" id="bulk-dropzone">
+      <label class="bulk-dropzone-label" for="bulk-file">
+        <strong>Choose file</strong> or drop it here
+      </label>
+      <input type="file" id="bulk-file" accept=".json,.csv" aria-label="Select JSON or CSV file for bulk import" />
+      <div class="bulk-filename" id="bulk-filename"></div>
+    </div>
+    <div class="bulk-actions">
+      <button class="btn-bulk-upload" id="bulk-upload-btn" type="button" disabled>Upload &amp; Import</button>
+    </div>
+    <div class="bulk-feedback" id="bulk-feedback" aria-live="polite"></div>
   </section>
 
   <section class="articles-section" aria-label="All Articles">
@@ -762,6 +883,141 @@
   }
 
   loadArticles();
+
+  // ---------------------------------------------------------------------------
+  // Bulk Import
+  // ---------------------------------------------------------------------------
+
+  const bulkDropzone  = document.getElementById("bulk-dropzone");
+  const bulkFileInput = document.getElementById("bulk-file");
+  const bulkFilename  = document.getElementById("bulk-filename");
+  const bulkUploadBtn = document.getElementById("bulk-upload-btn");
+  const bulkFeedback  = document.getElementById("bulk-feedback");
+
+  let selectedBulkFile = null;
+
+  bulkDropzone.addEventListener("click", () => bulkFileInput.click());
+
+  bulkDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    bulkDropzone.classList.add("drag-over");
+  });
+  bulkDropzone.addEventListener("dragleave", () => bulkDropzone.classList.remove("drag-over"));
+  bulkDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    bulkDropzone.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file) handleBulkFileSelected(file);
+  });
+
+  bulkFileInput.addEventListener("change", () => {
+    if (bulkFileInput.files[0]) handleBulkFileSelected(bulkFileInput.files[0]);
+  });
+
+  function handleBulkFileSelected(file) {
+    const name = file.name;
+    const ext = name.split(".").pop().toLowerCase();
+    if (ext !== "json" && ext !== "csv") {
+      bulkFeedback.className = "bulk-feedback error";
+      bulkFeedback.innerHTML = `Unsupported file format <strong>${escapeHtml(name)}</strong>. Please upload a <strong>.json</strong> or <strong>.csv</strong> file.`;
+      bulkUploadBtn.disabled = true;
+      selectedBulkFile = null;
+      bulkFilename.textContent = "";
+      return;
+    }
+    selectedBulkFile = file;
+    bulkFilename.textContent = name;
+    bulkFeedback.className = "bulk-feedback";
+    bulkFeedback.textContent = "";
+    bulkUploadBtn.disabled = false;
+  }
+
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 1) return [];
+    const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+    return lines.slice(1).map(line => {
+      const values = line.match(/("(?:[^"]|"")*"|[^,]*)/g)
+        .map(v => v.trim().replace(/^"|"$/g, "").replace(/""/g, '"'));
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = values[i] ?? ""; });
+      return obj;
+    });
+  }
+
+  bulkUploadBtn.addEventListener("click", async () => {
+    if (!selectedBulkFile) return;
+
+    bulkUploadBtn.disabled = true;
+    bulkFeedback.className = "bulk-feedback";
+    bulkFeedback.textContent = "";
+
+    try {
+      const text = await selectedBulkFile.text();
+      const ext = selectedBulkFile.name.split(".").pop().toLowerCase();
+      let rows;
+
+      if (ext === "json") {
+        try {
+          const parsed = JSON.parse(text);
+          rows = Array.isArray(parsed) ? parsed : parsed.rows ?? [];
+        } catch {
+          throw new Error("Invalid JSON file — could not parse.");
+        }
+      } else {
+        rows = parseCsv(text);
+      }
+
+      if (rows.length === 0) {
+        bulkFeedback.className = "bulk-feedback error";
+        bulkFeedback.textContent = "0 rows found in the file. Nothing to import.";
+        bulkUploadBtn.disabled = false;
+        return;
+      }
+
+      const resp = await fetch(`${API_BASE}/articles/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error ?? `Server returned ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      const { total, succeeded, failed, errors } = data;
+
+      if (failed === 0) {
+        bulkFeedback.className = "bulk-feedback success";
+        bulkFeedback.innerHTML = `<strong>${succeeded} / ${total} succeeded, 0 failed.</strong> All articles imported successfully.`;
+      } else if (succeeded === 0) {
+        bulkFeedback.className = "bulk-feedback error";
+        bulkFeedback.innerHTML = `<strong>0 / ${total} succeeded, ${failed} failed.</strong> No articles were imported.${renderBulkErrors(errors)}`;
+      } else {
+        bulkFeedback.className = "bulk-feedback partial";
+        bulkFeedback.innerHTML = `<strong>${succeeded} / ${total} succeeded, ${failed} failed.</strong>${renderBulkErrors(errors)}`;
+      }
+
+      if (succeeded > 0) loadArticles();
+    } catch (err) {
+      bulkFeedback.className = "bulk-feedback error";
+      bulkFeedback.textContent = err.message;
+    } finally {
+      bulkUploadBtn.disabled = false;
+    }
+  });
+
+  function renderBulkErrors(errors) {
+    if (!errors || errors.length === 0) return "";
+    const items = errors.map(e => {
+      const rowLabel = e.row !== undefined ? `Row ${e.row + 1}` : "Row";
+      const reason = e.reason || e.error || e.message || "unknown error";
+      return `<li>${escapeHtml(rowLabel)}: ${escapeHtml(reason)}</li>`;
+    }).join("");
+    return `<ul class="bulk-error-list">${items}</ul>`;
+  }
 </script>
 </body>
 </html>
