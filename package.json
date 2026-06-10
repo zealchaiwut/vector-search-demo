@@ -4,6 +4,7 @@
   "description": "End-to-end semantic vector search demo: embed, index, query, evaluate.",
   "type": "module",
   "scripts": {
+    "start": "node src/server.mjs",
     "eval": "node src/eval/index.js"
   },
   "engines": {
