@@ -84,6 +84,70 @@ function cosineSimilarity(a, b) {
 }
 
 // ---------------------------------------------------------------------------
+// Sentence splitting for best_passage extraction
+// ---------------------------------------------------------------------------
+
+function splitIntoSentences(text) {
+  const sentences = [];
+  let segStart = 0;
+  const len = text.length;
+
+  for (let i = 0; i < len; i++) {
+    const ch = text[i];
+    if (ch === "." || ch === "!" || ch === "?") {
+      let j = i + 1;
+      while (j < len && text[j] === " ") j++;
+      // Boundary: end of string or next non-space char is uppercase
+      if (j >= len || (text[j] >= "A" && text[j] <= "Z")) {
+        const raw = text.slice(segStart, i + 1);
+        const trimmed = raw.trim();
+        if (trimmed.length > 0) {
+          const lead = raw.length - raw.trimStart().length;
+          const start = segStart + lead;
+          sentences.push({ text: trimmed, start, end: start + trimmed.length });
+        }
+        segStart = j;
+        i = j - 1;
+      }
+    }
+  }
+
+  // Remaining text without terminal punctuation
+  if (segStart < len) {
+    const raw = text.slice(segStart);
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) {
+      const lead = raw.length - raw.trimStart().length;
+      const start = segStart + lead;
+      sentences.push({ text: trimmed, start, end: start + trimmed.length });
+    }
+  }
+
+  return sentences;
+}
+
+function selectBestPassage(docText, queryVec, idf) {
+  const sentences = splitIntoSentences(docText);
+  if (sentences.length === 0) {
+    const trimmed = docText.trim();
+    return { text: trimmed, start_offset: 0, end_offset: trimmed.length };
+  }
+
+  let best = sentences[0];
+  let bestScore = -1;
+
+  for (const sentence of sentences) {
+    const score = cosineSimilarity(queryVec, embed(sentence.text, idf));
+    if (score > bestScore) {
+      bestScore = score;
+      best = sentence;
+    }
+  }
+
+  return { text: best.text, start_offset: best.start, end_offset: best.end };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -115,17 +179,32 @@ export function searchDocuments(query, k = 10) {
     }
   }
 
+  // Build full doc_text per doc_id (chunk texts joined in collection order).
+  const docTexts = new Map();
+  for (const row of rows) {
+    if (!docTexts.has(row.doc_id)) {
+      docTexts.set(row.doc_id, row.text);
+    } else {
+      docTexts.set(row.doc_id, docTexts.get(row.doc_id) + " " + row.text);
+    }
+  }
+
   // Shape results: drop zero-score docs, sort, cap at k.
   return [...byDocId.values()]
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, k)
-    .map((r) => ({
-      doc_id: r.doc_id,
-      title: r.title,
-      snippet: r.text.replace(/\s+/g, " ").trim().slice(0, 240),
-      score: parseFloat(r.score.toFixed(4)),
-      attachment_name: `${r.doc_id}.txt`,
-      download_url: `/download/${r.doc_id}`,
-    }));
+    .map((r) => {
+      const docText = docTexts.get(r.doc_id) ?? r.text;
+      const best_passage = selectBestPassage(docText, queryVec, idf);
+      return {
+        doc_id: r.doc_id,
+        title: r.title,
+        snippet: r.text.replace(/\s+/g, " ").trim().slice(0, 240),
+        score: parseFloat(r.score.toFixed(4)),
+        attachment_name: `${r.doc_id}.txt`,
+        download_url: `/download/${r.doc_id}`,
+        best_passage,
+      };
+    });
 }
