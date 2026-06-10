@@ -8,7 +8,9 @@
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "eval": "node src/eval/index.js"
+    "eval": "node src/eval/index.js",
+    "milvus:up": "docker compose up -d",
+    "milvus:down": "docker compose down"
   },
   "engines": {
     "node": ">=18"
