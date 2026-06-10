@@ -4,10 +4,13 @@
   "description": "End-to-end semantic vector search demo: embed, index, query, evaluate.",
   "type": "module",
   "bin": {
-    "commander": "src/cli.js"
+    "commander": "dist/cli.js"
   },
   "scripts": {
-    "start": "node src/server.mjs",
+    "build": "tsc",
+    "dev": "tsx watch src/cli.ts serve",
+    "start": "node dist/cli.js serve",
+    "typecheck": "tsc --noEmit",
     "eval": "node src/eval/index.js",
     "milvus:up": "docker compose up -d",
     "milvus:down": "docker compose down"
@@ -17,6 +20,13 @@
   },
   "dependencies": {
     "@xenova/transformers": "^2.17.2",
-    "@zilliz/milvus2-sdk-node": "^3.0.3"
+    "@zilliz/milvus2-sdk-node": "^3.0.3",
+    "commander": "^15.0.0",
+    "fastify": "^5.8.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
   }
 }
