@@ -244,7 +244,7 @@ async function handleRequest(req, res) {
     const articleId = pathname.slice("/download/".length);
     const filePath = join(ATTACHMENTS_DIR, `${articleId}.txt`);
     if (!existsSync(filePath)) {
-      jsonResponse(res, 404, { error: "Document not found" });
+      jsonResponse(res, 404, { error: "Attachment not found" });
       return;
     }
     try {
@@ -257,7 +257,7 @@ async function handleRequest(req, res) {
       });
       res.end(content);
     } catch {
-      jsonResponse(res, 404, { error: "Document not found" });
+      jsonResponse(res, 404, { error: "Attachment not found" });
     }
     return;
   }
