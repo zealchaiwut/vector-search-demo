@@ -28,6 +28,17 @@ async function getEmbedder() {
 }
 
 // ---------------------------------------------------------------------------
+// Attachment URL type discriminator
+// ---------------------------------------------------------------------------
+
+function resolveAttachmentUrlType(url) {
+  if (!url) return null;
+  if (url.startsWith("/download/")) return "local";
+  if (url.startsWith("http://") || url.startsWith("https://")) return "external";
+  return "external";
+}
+
+// ---------------------------------------------------------------------------
 // File-backed collection access (fallback when MILVUS_HOST not set)
 // ---------------------------------------------------------------------------
 
@@ -229,7 +240,8 @@ async function _searchMilvus(query, k) {
         headline: r.headline,
         details: r.details.replace(/\s+/g, " ").trim().slice(0, 240),
         score: parseFloat(r.score.toFixed(4)),
-        attachment_url: r.attachment_url,
+        attachment_url: r.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(r.attachment_url),
         best_passage,
       };
     });
@@ -294,7 +306,8 @@ async function _searchFile(query, k) {
         headline: r.headline,
         details: r.details.replace(/\s+/g, " ").trim().slice(0, 240),
         score: parseFloat(r.score.toFixed(4)),
-        attachment_url: r.attachment_url,
+        attachment_url: r.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(r.attachment_url),
         best_passage,
       };
     });

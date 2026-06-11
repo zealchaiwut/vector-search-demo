@@ -7,7 +7,7 @@ import pytest
 BASE_URL = os.environ.get("UAT_BASE_URL", "http://localhost:8001")
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CORE_SEARCH_JS = os.path.join(REPO_ROOT, "..", "coder", "src", "core", "search.js")
+CORE_SEARCH_JS = os.path.join(REPO_ROOT, "src", "core", "search.js")
 
 CURRENT_FIELDS = {"id", "headline", "details", "score", "attachment_url"}
 
