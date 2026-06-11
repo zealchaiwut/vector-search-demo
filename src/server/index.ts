@@ -15,7 +15,9 @@ interface SearchResult {
   headline: string;
   details: string;
   score: number;
-  attachment_url: string;
+  attachment_url: string | null;
+  /** "external" for http(s) URLs, "local" for /download/ paths, null when no attachment */
+  attachment_url_type: "external" | "local" | null;
   best_passage: { text: string; start_offset: number; end_offset: number };
 }
 
