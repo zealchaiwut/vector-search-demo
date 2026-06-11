@@ -188,6 +188,9 @@ async function _searchMilvus(query, k) {
       output_fields: ["id", "headline", "details", "attachment_url"],
       limit: EF,
       params: { ef: EF },
+      // Strong consistency so results reflect upserts/deletes immediately
+      // (the demo flow creates or deletes an article and searches right after).
+      consistency_level: "Strong",
     });
   } catch {
     return [];
