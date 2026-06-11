@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..", "..");
 const ATTACHMENTS_DIR = join(REPO_ROOT, "attachments");
 
-export function runIngest() {
+export async function runIngest() {
   // Reset collection from scratch (idempotent)
   dropCollection();
   createCollection();
@@ -37,7 +37,7 @@ export function runIngest() {
   const chunks = chunkDocuments(articles);
 
   // Batch-embed all chunks at once
-  const embeddedChunks = batchEmbed(chunks);
+  const embeddedChunks = await batchEmbed(chunks);
 
   // Build rows for collection upsert
   const rows = embeddedChunks.map((c) => ({

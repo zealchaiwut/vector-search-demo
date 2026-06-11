@@ -8,7 +8,10 @@ const [, , command, ...args] = process.argv;
 if (command === "search") {
   runSearch(args);
 } else if (command === "ingest") {
-  runIngest();
+  runIngest().catch((err) => {
+    process.stderr.write(`Error: ${err.message}\n`);
+    process.exit(1);
+  });
 } else if (command === "init") {
   runInit(args).catch((err) => {
     process.stderr.write(`Error: ${err.message}\n`);
