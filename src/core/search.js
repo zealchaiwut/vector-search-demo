@@ -6,6 +6,9 @@
  * Uses EF=64 over-fetching and per-article chunk collapsing before returning
  * the top-k shaped results.
  *
+ * When MILVUS_HOST is set, queries the Milvus 'documents' collection via
+ * vector search. Otherwise falls back to the file-backed collection.json.
+ *
  * Search depends on ingest: with an empty/absent collection it returns [].
  */
 
@@ -16,6 +19,7 @@ import { createEmbedder } from "../embeddings/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
+const COLLECTION_NAME = "documents";
 
 const EF = 64;
 
@@ -26,7 +30,7 @@ async function getEmbedder() {
 }
 
 // ---------------------------------------------------------------------------
-// Collection access
+// File-backed collection access
 // ---------------------------------------------------------------------------
 
 function loadRows() {
@@ -164,44 +168,10 @@ function selectBestPassage(docText, queryVec, idf) {
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// Shared result shaping
 // ---------------------------------------------------------------------------
 
-async function _searchImpl(query, k) {
-  const rows = loadRows();
-  if (rows.length === 0) return [];
-
-  const trimmed = (query ?? "").trim();
-  if (!trimmed) return [];
-
-  // Embed query with MiniLM — same model used at ingest.
-  const embedder = await getEmbedder();
-  const [queryEmbedding] = await embedder.embed([trimmed]);
-
-  // Score every chunk via COSINE similarity on stored embeddings.
-  const scored = rows
-    .filter((row) => Array.isArray(row.embedding) && row.embedding.length > 0)
-    .map((row) => ({
-      articleId: row.id.split(":")[0],
-      id: row.id,
-      headline: row.headline,
-      details: row.details,
-      attachment_url: row.attachment_url,
-      score: dotProduct(queryEmbedding, row.embedding),
-    }));
-
-  // Over-fetch the top EF chunks before collapsing to articles.
-  const candidates = scored.sort((a, b) => b.score - a.score).slice(0, EF);
-
-  // Collapse: keep the best-scoring chunk per article.
-  const byArticleId = new Map();
-  for (const c of candidates) {
-    if (!byArticleId.has(c.articleId) || c.score > byArticleId.get(c.articleId).score) {
-      byArticleId.set(c.articleId, c);
-    }
-  }
-
-  // Build full article text per article id for best_passage extraction.
+function shapeResults(candidates, rows, trimmed, k) {
   const articleTexts = new Map();
   for (const row of rows) {
     const aid = row.id.split(":")[0];
@@ -212,11 +182,10 @@ async function _searchImpl(query, k) {
     }
   }
 
-  // Build TF-IDF space for best_passage sentence scoring.
   const idf = buildIDF(rows.map((r) => `${r.headline} ${r.details}`));
   const queryVecSparse = tfidfEmbed(trimmed, idf);
 
-  return [...byArticleId.values()]
+  return [...candidates.values()]
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, k)
@@ -234,7 +203,111 @@ async function _searchImpl(query, k) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Milvus-backed search
+// ---------------------------------------------------------------------------
+
+async function _searchMilvus(query, k) {
+  const { MilvusClient } = await import("@zilliz/milvus2-sdk-node");
+  const host = process.env.MILVUS_HOST;
+  const port = process.env.MILVUS_PORT || "19530";
+  const client = new MilvusClient({ address: `${host}:${port}` });
+
+  const trimmed = (query ?? "").trim();
+  if (!trimmed) return [];
+
+  const embedder = await getEmbedder();
+  const [queryEmbedding] = await embedder.embed([trimmed]);
+
+  let hits;
+  try {
+    const searchResult = await client.search({
+      collection_name: COLLECTION_NAME,
+      data: [queryEmbedding],
+      anns_field: "embedding",
+      limit: EF,
+      output_fields: ["id", "headline", "details", "attachment_url"],
+      params: { ef: EF },
+    });
+    hits = searchResult.results || [];
+  } catch {
+    return [];
+  }
+
+  if (hits.length === 0) return [];
+
+  // Collapse by article ID (keep best score per article)
+  const byArticleId = new Map();
+  for (const hit of hits) {
+    const articleId = hit.id.split(":")[0];
+    if (!byArticleId.has(articleId) || hit.score > byArticleId.get(articleId).score) {
+      byArticleId.set(articleId, {
+        articleId,
+        id: hit.id,
+        headline: hit.headline,
+        details: hit.details,
+        attachment_url: hit.attachment_url,
+        score: hit.score,
+      });
+    }
+  }
+
+  // Use hit rows directly for best_passage (avoids extra Milvus round-trips)
+  const rows = hits.map((h) => ({
+    id: h.id,
+    headline: h.headline,
+    details: h.details,
+    attachment_url: h.attachment_url,
+  }));
+
+  return shapeResults(byArticleId, rows, trimmed, k);
+}
+
+// ---------------------------------------------------------------------------
+// File-backed search
+// ---------------------------------------------------------------------------
+
+async function _searchFile(query, k) {
+  const rows = loadRows();
+  if (rows.length === 0) return [];
+
+  const trimmed = (query ?? "").trim();
+  if (!trimmed) return [];
+
+  const embedder = await getEmbedder();
+  const [queryEmbedding] = await embedder.embed([trimmed]);
+
+  const scored = rows
+    .filter((row) => Array.isArray(row.embedding) && row.embedding.length > 0)
+    .map((row) => ({
+      articleId: row.id.split(":")[0],
+      id: row.id,
+      headline: row.headline,
+      details: row.details,
+      attachment_url: row.attachment_url,
+      score: dotProduct(queryEmbedding, row.embedding),
+    }));
+
+  const candidates = scored.sort((a, b) => b.score - a.score).slice(0, EF);
+
+  const byArticleId = new Map();
+  for (const c of candidates) {
+    if (!byArticleId.has(c.articleId) || c.score > byArticleId.get(c.articleId).score) {
+      byArticleId.set(c.articleId, c);
+    }
+  }
+
+  return shapeResults(byArticleId, rows, trimmed, k);
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 // Returns a Promise — call sites must await.
 export function searchDocuments(query, k = 10) {
-  return _searchImpl(query, k);
+  if (process.env.MILVUS_HOST) {
+    return _searchMilvus(query, k);
+  }
+  return _searchFile(query, k);
 }
