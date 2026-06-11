@@ -336,3 +336,49 @@ def test_milvus_client__no_sdk_import_in_cli_top_level():
     assert not top_level_imports, (
         f"cli.js should not statically import milvus client at top level. Found: {top_level_imports}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #33 extension: ingest-to-search round trip via collection.js + search.js
+# ---------------------------------------------------------------------------
+
+
+@needs_milvus
+def test_milvus_client__ingest_to_search_round_trip():
+    """Issue #33 AC8: upsertRows → searchDocuments finds the ingested article."""
+    stdout, stderr, rc = run_node(
+        f"""
+import {{ upsertRows, deleteArticle }} from './src/data/collection.js';
+import {{ createEmbedder }} from './src/embeddings/index.js';
+import {{ searchDocuments }} from './src/core/search.js';
+
+const phrase = 'milvus client round trip test phrase issue33 unique beacon';
+const articleId = 'rt-client-33-' + Date.now();
+const embedder = await createEmbedder();
+const [embedding] = await embedder.embed([phrase]);
+
+await upsertRows([{{
+  id: articleId + ':0',
+  headline: 'Round Trip Client Test Issue33',
+  details: phrase,
+  attachment_url: '',
+  embedding,
+}}]);
+
+const results = await searchDocuments(phrase, 10);
+const found = results.some(r => r.id === articleId);
+
+// Cleanup
+await deleteArticle(articleId);
+
+process.stdout.write(JSON.stringify({{ found, count: results.length }}));
+""",
+        timeout=180,
+        env_extra={"MILVUS_HOST": MILVUS_HOST, "MILVUS_PORT": MILVUS_PORT},
+    )
+    assert rc == 0, f"Round trip test failed: {stderr}"
+    data = json.loads(stdout)
+    assert data["found"], (
+        f"Ingested article not found by searchDocuments in round trip test. "
+        f"Results count: {data.get('count')}"
+    )

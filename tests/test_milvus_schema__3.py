@@ -321,3 +321,52 @@ def test_milvus_schema__commander_init_twice_single_collection():
         env_extra={"MILVUS_HOST": MILVUS_HOST, "MILVUS_PORT": MILVUS_PORT},
     )
     assert r2.returncode == 0, f"Second init failed: {r2.stderr}"
+
+
+# ---------------------------------------------------------------------------
+# Issue #33 extension: ingest-to-search round trip via collection schema
+# ---------------------------------------------------------------------------
+
+
+@needs_milvus
+def test_milvus_schema__ingest_to_search_round_trip():
+    """Issue #33 AC8: after upsertRows via schema-provisioned collection, searchDocuments finds it."""
+    stdout, stderr, rc = run_node(
+        f"""
+import {{ upsertRows, deleteArticle, createCollection }} from './src/data/collection.js';
+import {{ createEmbedder }} from './src/embeddings/index.js';
+import {{ searchDocuments }} from './src/core/search.js';
+
+// Ensure collection exists (idempotent)
+await createCollection();
+
+const phrase = 'milvus schema round trip test phrase issue33 unique beacon';
+const articleId = 'rt-schema-33-' + Date.now();
+const embedder = await createEmbedder();
+const [embedding] = await embedder.embed([phrase]);
+
+await upsertRows([{{
+  id: articleId + ':0',
+  headline: 'Round Trip Schema Test Issue33',
+  details: phrase,
+  attachment_url: '',
+  embedding,
+}}]);
+
+const results = await searchDocuments(phrase, 10);
+const found = results.some(r => r.id === articleId);
+
+// Cleanup
+await deleteArticle(articleId);
+
+process.stdout.write(JSON.stringify({{ found, count: results.length }}));
+""",
+        timeout=180,
+        env_extra={"MILVUS_HOST": MILVUS_HOST, "MILVUS_PORT": MILVUS_PORT},
+    )
+    assert rc == 0, f"Round trip test failed: {stderr}"
+    data = json.loads(stdout)
+    assert data["found"], (
+        f"Ingested article not found by searchDocuments after schema init. "
+        f"Results count: {data.get('count')}"
+    )
