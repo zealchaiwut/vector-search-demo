@@ -31,6 +31,7 @@ async function getEmbedder() {
 // Attachment URL type discriminator
 // ---------------------------------------------------------------------------
 
+/** @returns {"external" | "local" | null} */
 function resolveAttachmentUrlType(url) {
   if (!url) return null;
   if (url.startsWith("/download/")) return "local";
@@ -203,8 +204,20 @@ async function _searchMilvus(query, k) {
       // (the demo flow creates or deletes an article and searches right after).
       consistency_level: "Strong",
     });
-  } catch {
-    return [];
+  } catch (err) {
+    const message = String(err?.message ?? err);
+    // Expected: Milvus collection hasn't been created yet (e.g. before first ingest).
+    const isExpected =
+      /collection.*(not found|doesn'?t exist|not exist)/i.test(message) ||
+      /COLLECTION_NOT_EXIST/i.test(message) ||
+      err?.code === 25; // Milvus SDK error code for collection not found
+
+    console.error(
+      `[search] Milvus error (collection=${COLLECTION_NAME}, expected=${isExpected}): ${message}`
+    );
+
+    if (isExpected) return [];
+    throw err;
   }
 
   const hits = searchResult.results || [];

@@ -244,8 +244,13 @@ async function handleRequest(req, res) {
   if (req.method === "GET" && pathname === "/search") {
     const q = url.searchParams.get("q") ?? "";
     const k = parseInt(url.searchParams.get("k") ?? "10", 10);
-    const results = await search(q, k);
-    jsonResponse(res, 200, { results });
+    try {
+      const results = await search(q, k);
+      jsonResponse(res, 200, { results });
+    } catch (err) {
+      console.error("[server] Search failed unexpectedly:", err?.message ?? err);
+      jsonResponse(res, 502, { error: "Search service unavailable" });
+    }
     return;
   }
 
