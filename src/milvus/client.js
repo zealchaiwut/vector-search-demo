@@ -7,9 +7,14 @@ class MilvusClientWrapper {
   }
 
   _getAddress() {
-    const host = process.env.MILVUS_HOST || "localhost";
-    const port = process.env.MILVUS_PORT || "19530";
-    return `${host}:${port}`;
+    // MILVUS_HOST/MILVUS_PORT take precedence (used by live tests);
+    // otherwise honor MILVUS_ADDRESS from .env (see .env.example).
+    const host = process.env.MILVUS_HOST;
+    const port = process.env.MILVUS_PORT;
+    if (host || port) {
+      return `${host || "localhost"}:${port || "19530"}`;
+    }
+    return process.env.MILVUS_ADDRESS || "localhost:19530";
   }
 
   async _init() {

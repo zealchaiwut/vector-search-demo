@@ -151,6 +151,7 @@ Copy `.env.example` to `.env`.
 | `PORT` | `8000` | Server port (override — see Setup note about 7000/8000) |
 | `MILVUS_HOST` | (unset) | Milvus host — when set, all storage and search use Milvus |
 | `MILVUS_PORT` | `19530` | Milvus gRPC port |
+| `MILVUS_ADDRESS` | `localhost:19530` | Fallback gRPC address for `ping` and the schema helpers when `MILVUS_HOST`/`MILVUS_PORT` are unset |
 | `COLLECTION_NAME` | `documents` | Milvus collection name |
 | `EMBEDDING_MODEL` | `Xenova/all-MiniLM-L6-v2` | Embedding model used by `ingest`. The first ingest run downloads ~90 MB from HuggingFace; subsequent runs use the cached model. |
 | `DIM` | `384` | Embedding dimension — must match the model output (384 for MiniLM). A mismatch raises a clear error at ingest time. |
