@@ -3,6 +3,13 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 5 (2026-06-11)
+
+- #24: Clarify scope path for best_passage implementation (src/search vs src/core)
+- #27: Clarify attachment URL resolution semantics in search results
+- #28: Update /download error message to mention attachments
+- #38: Validate or parameterize articleId in Milvus filter expressions to prevent injection
+
 ## Sprint 4 (2026-06-11)
 
 - #30: Wire init and ingest commands to real Milvus collection

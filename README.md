@@ -108,6 +108,7 @@ Search result shape (`GET /search`):
       "details": "...",
       "score": 0.1996,
       "attachment_url": "https://example.com/file.pdf",
+      "attachment_url_type": "external",
       "best_passage": {
         "text": "Single verbatim sentence most similar to the query.",
         "start_offset": 42,
@@ -118,7 +119,9 @@ Search result shape (`GET /search`):
 }
 ```
 
-`attachment_url` is the external URL for the attachment; results where `attachment_url` is null/empty do not render a link in the UI. `best_passage` is the highest-scoring sentence from the article (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full article text.
+`attachment_url` is `null` when absent, or a URL string otherwise. `attachment_url_type` is `"local"` for `/download/`-prefixed paths or `"external"` for `http(s)://` URLs (also `null` when `attachment_url` is absent). Results where `attachment_url` is null do not render a link in the UI. `best_passage` is the highest-scoring sentence from the article (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full article text.
+
+`/download/:articleId` validates the `articleId` path parameter — only alphanumeric characters, `-`, and `_` are accepted. Invalid IDs return HTTP 400 "Invalid article ID" before any storage lookup. When the article is not found the response is HTTP 404 "Attachment not found".
 
 Integrity check response (`GET /health/integrity`):
 

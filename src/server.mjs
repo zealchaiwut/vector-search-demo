@@ -17,7 +17,7 @@ import { randomUUID } from "node:crypto";
 import { searchDocuments } from "./core/search.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
-import { validateArticle } from "./data/articleValidation.js";
+import { validateArticle, validateArticleId } from "./data/articleValidation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -172,6 +172,11 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Article id is required" });
       return;
     }
+    const idError = validateArticleId(articleId);
+    if (idError) {
+      jsonResponse(res, 400, { error: idError });
+      return;
+    }
     const existing = await getArticle(articleId);
     if (!existing) {
       jsonResponse(res, 404, { error: "Article not found" });
@@ -205,6 +210,11 @@ async function handleRequest(req, res) {
     const articleId = pathname.slice("/articles/".length);
     if (!articleId) {
       jsonResponse(res, 400, { error: "Article id is required" });
+      return;
+    }
+    const idError = validateArticleId(articleId);
+    if (idError) {
+      jsonResponse(res, 400, { error: idError });
       return;
     }
     const removed = await deleteArticle(articleId);

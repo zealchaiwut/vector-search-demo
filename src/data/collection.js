@@ -7,6 +7,7 @@
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateArticleId } from "./articleValidation.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -174,6 +175,8 @@ export async function listArticles() {
 }
 
 export async function getArticle(articleId) {
+  const idError = validateArticleId(articleId);
+  if (idError) throw new Error(idError);
   if (process.env.MILVUS_HOST) {
     const client = await getMilvusClient();
     const result = await client.query({
@@ -205,6 +208,8 @@ export async function getArticle(articleId) {
 }
 
 export async function deleteArticle(articleId) {
+  const idError = validateArticleId(articleId);
+  if (idError) throw new Error(idError);
   if (process.env.MILVUS_HOST) {
     const client = await getMilvusClient();
     const check = await client.query({
