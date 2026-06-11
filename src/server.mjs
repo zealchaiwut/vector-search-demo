@@ -25,7 +25,7 @@ const PUBLIC_DIR = join(REPO_ROOT, "public");
 const ATTACHMENTS_DIR = join(REPO_ROOT, "attachments");
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
-function search(query, k = 10) {
+async function search(query, k = 10) {
   return searchDocuments(query, k);
 }
 
@@ -234,7 +234,7 @@ async function handleRequest(req, res) {
   if (req.method === "GET" && pathname === "/search") {
     const q = url.searchParams.get("q") ?? "";
     const k = parseInt(url.searchParams.get("k") ?? "10", 10);
-    const results = search(q, k);
+    const results = await search(q, k);
     jsonResponse(res, 200, { results });
     return;
   }

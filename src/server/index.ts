@@ -35,7 +35,7 @@ export async function createServer() {
       if (!q) {
         return reply.send({ results: [] as SearchResult[] });
       }
-      const results: SearchResult[] = searchDocuments(q, Number.isFinite(k) ? k : 10);
+      const results: SearchResult[] = await searchDocuments(q, Number.isFinite(k) ? k : 10);
       return reply.send({ results });
     }
   );
