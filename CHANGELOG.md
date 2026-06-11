@@ -3,6 +3,14 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 4 (2026-06-11)
+
+- #30: Wire init and ingest commands to real Milvus collection
+- #31: Replace TF-IDF embedder with MiniLM in ingest
+- #32: Wire search to real Milvus vector search
+- #33: Port article CRUD operations from file to Milvus
+- #34: Wire article upload form to Milvus collection
+
 ## Sprint 3.1 (2026-06-11)
 
 - #20: Add input validation and vector-article integrity check

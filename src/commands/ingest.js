@@ -10,10 +10,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..", "..");
 const ATTACHMENTS_DIR = join(REPO_ROOT, "attachments");
 
-export function runIngest() {
+export async function runIngest() {
   // Reset collection from scratch (idempotent)
-  dropCollection();
-  createCollection();
+  await dropCollection();
+  await createCollection();
 
   // Reset attachments directory
   if (existsSync(ATTACHMENTS_DIR)) {
@@ -37,7 +37,7 @@ export function runIngest() {
   const chunks = chunkDocuments(articles);
 
   // Batch-embed all chunks at once
-  const embeddedChunks = batchEmbed(chunks);
+  const embeddedChunks = await batchEmbed(chunks);
 
   // Build rows for collection upsert
   const rows = embeddedChunks.map((c) => ({
@@ -48,7 +48,7 @@ export function runIngest() {
     embedding: c.embedding,
   }));
 
-  upsertRows(rows);
+  await upsertRows(rows);
 
   process.stdout.write(`${articles.length} docs / ${rows.length} chunks indexed\n`);
 }

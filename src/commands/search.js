@@ -19,7 +19,7 @@ function parseArgs(argv) {
   return { query, k };
 }
 
-export function runSearch(argv) {
+export async function runSearch(argv) {
   const { query, k } = parseArgs(argv);
 
   if (!query || query.trim() === "") {
@@ -29,7 +29,7 @@ export function runSearch(argv) {
     process.exit(1);
   }
 
-  const results = searchDocuments(query, k);
+  const results = await searchDocuments(query, k);
 
   if (results.length === 0) {
     process.stdout.write("No results found\n");
