@@ -161,7 +161,7 @@ the Milvus/embedding keys are read but unused until the real backend is wired.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8000` | Server port (override — see Setup note about 7000/8000) |
-| `MILVUS_ADDRESS` | `localhost:19530` | Milvus gRPC address (used only by `ping`) |
+| `MILVUS_ADDRESS` | `localhost:19530` | Milvus gRPC address (used only by `ping`; `MILVUS_HOST`/`MILVUS_PORT` override it when set) |
 | `COLLECTION_NAME` | `documents` | Collection name (unused by file backend) |
 | `EMBEDDING_MODEL` | `Xenova/all-MiniLM-L6-v2` | Embedding model (not yet wired) |
 | `DIM` | `384` | Embedding dimension (not yet wired) |

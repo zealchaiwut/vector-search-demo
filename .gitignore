@@ -5,6 +5,10 @@ dist/
 # Generated at runtime by `ingest` — not source
 collection.json
 attachments/
+
+# Milvus docker-compose data + codedb tool artifact
+volumes/
+codedb.snapshot
 __pycache__/
 *.pyc
 *.log
