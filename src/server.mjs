@@ -119,8 +119,8 @@ async function handleRequest(req, res) {
       const details = (row.details ?? "").trim();
       const attachment_url = (row.attachment_url ?? "").trim();
       const id = randomUUID();
-      const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
-      upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
+      const [{ embedding }] = await batchEmbed([{ details: `${headline} ${details}` }]);
+      await upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
       succeeded++;
     }
     jsonResponse(res, 200, {
@@ -152,15 +152,15 @@ async function handleRequest(req, res) {
     const details = (payload.details ?? "").trim();
     const attachment_url = (payload.attachment_url ?? "").trim();
     const id = randomUUID();
-    const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
-    upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
+    const [{ embedding }] = await batchEmbed([{ details: `${headline} ${details}` }]);
+    await upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
     jsonResponse(res, 201, { id });
     return;
   }
 
   // GET /articles — list all articles
   if (req.method === "GET" && pathname === "/articles") {
-    const articles = listArticles();
+    const articles = await listArticles();
     jsonResponse(res, 200, { articles });
     return;
   }
@@ -172,7 +172,7 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Article id is required" });
       return;
     }
-    const existing = getArticle(articleId);
+    const existing = await getArticle(articleId);
     if (!existing) {
       jsonResponse(res, 404, { error: "Article not found" });
       return;
@@ -194,8 +194,8 @@ async function handleRequest(req, res) {
     const headline = (payload.headline ?? "").trim();
     const details = (payload.details ?? "").trim();
     const attachment_url = (payload.attachment_url ?? "").trim();
-    const [{ embedding }] = batchEmbed([{ details: `${headline} ${details}` }]);
-    upsertRows([{ id: `${articleId}:0`, headline, details, attachment_url, embedding }]);
+    const [{ embedding }] = await batchEmbed([{ details: `${headline} ${details}` }]);
+    await upsertRows([{ id: `${articleId}:0`, headline, details, attachment_url, embedding }]);
     jsonResponse(res, 200, { id: articleId });
     return;
   }
@@ -207,7 +207,7 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Article id is required" });
       return;
     }
-    const removed = deleteArticle(articleId);
+    const removed = await deleteArticle(articleId);
     if (!removed) {
       jsonResponse(res, 404, { error: "Article not found" });
       return;
@@ -218,8 +218,8 @@ async function handleRequest(req, res) {
 
   // GET /health/integrity — compare article count vs. vector count
   if (req.method === "GET" && pathname === "/health/integrity") {
-    const vectorCount = entityCount();
-    const articleCount = listArticles().length;
+    const vectorCount = await entityCount();
+    const articleCount = (await listArticles()).length;
     if (vectorCount === articleCount) {
       jsonResponse(res, 200, { status: "ok", articleCount, vectorCount });
     } else {

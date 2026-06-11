@@ -13,21 +13,17 @@ for download. Includes a recall@k evaluation harness.
 - **CLI** (`init`, `ingest`, `search`, `serve`, `ping`) via `node dist/cli.js <cmd>`.
 - **Ingestion pipeline** — a small built-in corpus (6 docs in `src/data/generator.js`)
   is chunked, embedded using MiniLM (384-dim neural vectors via `src/embeddings/index.js`),
-  written to a file-backed collection (`collection.json`), and saved as downloadable
-  `.txt` files under `attachments/`.
-- **Search** — `core/search.js` reads the ingested `collection.json`, builds a TF-IDF
-  space over the chunks, and ranks documents by cosine similarity (over-fetch + collapse
-  per document).
+  stored in Milvus (`MILVUS_HOST` set) or a local `collection.json` fallback, and saved
+  as downloadable `.txt` files under `attachments/`.
+- **Search** — `core/search.js` embeds the query with MiniLM and runs ANN search via
+  Milvus (HNSW COSINE, EF=64 over-fetch, chunk collapsing per article) when
+  `MILVUS_HOST` is set, or falls back to a linear cosine scan over `collection.json`.
 - **HTTP API** — one Fastify server with `/health`, `/search`, `/download/:docId`
   (GET + HEAD), and the search UI at `/`.
 - **Evaluation** — `npm run eval` reports recall@k against the running server.
   Current corpus + fixtures score **recall@5 = 1.00**.
 
 ### ❌ Not built / not wired (despite being present in the tree)
-- **Milvus is NOT used by search or ingest.** The container runs and `ping` talks to it,
-  but `milvus/schema.js` and `milvus/client.js` are otherwise unused. Storage is a plain
-  JSON file, scanned linearly.
-- **No real ANN index** (no HNSW/IVF) — search uses linear cosine scan over `collection.json`.
 - **Corpus is a fixed built-in set**, not loaded from external files or a real data source.
 
 ## Prerequisites
@@ -153,8 +149,9 @@ Copy `.env.example` to `.env`.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8000` | Server port (override — see Setup note about 7000/8000) |
-| `MILVUS_ADDRESS` | `localhost:19530` | Milvus gRPC address (used only by `ping`) |
-| `COLLECTION_NAME` | `documents` | Collection name (unused by file backend) |
+| `MILVUS_HOST` | (unset) | Milvus host — when set, all storage and search use Milvus |
+| `MILVUS_PORT` | `19530` | Milvus gRPC port |
+| `COLLECTION_NAME` | `documents` | Milvus collection name |
 | `EMBEDDING_MODEL` | `Xenova/all-MiniLM-L6-v2` | Embedding model used by `ingest`. The first ingest run downloads ~90 MB from HuggingFace; subsequent runs use the cached model. |
 | `DIM` | `384` | Embedding dimension — must match the model output (384 for MiniLM). A mismatch raises a clear error at ingest time. |
 
@@ -164,11 +161,13 @@ Copy `.env.example` to `.env`.
 src/data/generator.js   built-in 6-doc corpus
   -> src/data/chunker.js         split into chunks
   -> src/data/embedder.js        384-dim MiniLM vectors (via src/embeddings/index.js)
-  -> src/data/collection.js  ->  collection.json   (file-backed "collection")
+  -> src/data/collection.js  ->  Milvus (when MILVUS_HOST is set)
+                             ->  collection.json (local fallback without Milvus)
   -> attachments/*.txt            downloadable source files
 
-src/core/search.js   reads collection.json, cosine ranking
-src/server/index.ts  Fastify: /health, /search, /download, /
-
-Unwired (real backend): src/milvus/*
+src/core/search.js   embeds query with MiniLM, queries Milvus (HNSW COSINE ANN)
+                     or falls back to linear cosine scan over collection.json
+src/milvus/client.js   singleton MilvusClient wrapper (dynamic SDK import)
+src/milvus/schema.ts   Milvus collection schema: HNSW index, COSINE metric, dim=384
+src/server.mjs       HTTP: /health, /search, /download, /articles CRUD
 ```

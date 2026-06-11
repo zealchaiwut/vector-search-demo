@@ -12,8 +12,8 @@ const ATTACHMENTS_DIR = join(REPO_ROOT, "attachments");
 
 export async function runIngest() {
   // Reset collection from scratch (idempotent)
-  dropCollection();
-  createCollection();
+  await dropCollection();
+  await createCollection();
 
   // Reset attachments directory
   if (existsSync(ATTACHMENTS_DIR)) {
@@ -48,7 +48,7 @@ export async function runIngest() {
     embedding: c.embedding,
   }));
 
-  upsertRows(rows);
+  await upsertRows(rows);
 
   process.stdout.write(`${articles.length} docs / ${rows.length} chunks indexed\n`);
 }

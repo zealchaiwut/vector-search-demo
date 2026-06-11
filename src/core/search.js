@@ -1,12 +1,13 @@
 /**
  * Core search logic for vector-search-demo.
  *
- * Embeds the query with the MiniLM model (same model used at ingest), then
- * ranks chunks by COSINE similarity against their stored embeddings.
- * Uses EF=64 over-fetching and per-article chunk collapsing before returning
- * the top-k shaped results.
+ * When MILVUS_HOST is set: embeds the query with MiniLM, runs ANN search via
+ * Milvus COSINE similarity, collapses chunks to articles, extracts best passage.
  *
- * Search depends on ingest: with an empty/absent collection it returns [].
+ * When MILVUS_HOST is not set: loads rows from collection.json and ranks by
+ * cosine similarity (same MiniLM embeddings, local computation).
+ *
+ * Search depends on ingest: empty or absent data returns [].
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -16,6 +17,7 @@ import { createEmbedder } from "../embeddings/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
+const COLLECTION_NAME = "documents";
 
 const EF = 64;
 
@@ -26,7 +28,7 @@ async function getEmbedder() {
 }
 
 // ---------------------------------------------------------------------------
-// Collection access
+// File-backed collection access (fallback when MILVUS_HOST not set)
 // ---------------------------------------------------------------------------
 
 function loadRows() {
@@ -50,7 +52,7 @@ function dotProduct(a, b) {
 }
 
 // ---------------------------------------------------------------------------
-// TF-IDF helpers — used only for best_passage sentence scoring
+// TF-IDF helpers — used for best_passage sentence scoring
 // ---------------------------------------------------------------------------
 
 function tokenize(text) {
@@ -114,7 +116,6 @@ function splitIntoSentences(text) {
     if (ch === "." || ch === "!" || ch === "?") {
       let j = i + 1;
       while (j < len && text[j] === " ") j++;
-      // Boundary: end of string or next non-space char is uppercase
       if (j >= len || (text[j] >= "A" && text[j] <= "Z")) {
         const raw = text.slice(segStart, i + 1);
         const trimmed = raw.trim();
@@ -164,21 +165,87 @@ function selectBestPassage(docText, queryVec, idf) {
 }
 
 // ---------------------------------------------------------------------------
-// Public API
+// Milvus-backed search path (used when MILVUS_HOST is set)
 // ---------------------------------------------------------------------------
 
-async function _searchImpl(query, k) {
+async function _searchMilvus(query, k) {
+  const trimmed = (query ?? "").trim();
+  if (!trimmed) return [];
+
+  const embedder = await getEmbedder();
+  const [queryEmbedding] = await embedder.embed([trimmed]);
+
+  const { MilvusClient } = await import("@zilliz/milvus2-sdk-node");
+  const host = process.env.MILVUS_HOST;
+  const port = process.env.MILVUS_PORT || "19530";
+  const client = new MilvusClient({ address: `${host}:${port}` });
+
+  let searchResult;
+  try {
+    searchResult = await client.search({
+      collection_name: COLLECTION_NAME,
+      data: [queryEmbedding],
+      output_fields: ["id", "headline", "details", "attachment_url"],
+      limit: EF,
+      params: { ef: EF },
+    });
+  } catch {
+    return [];
+  }
+
+  const hits = searchResult.results || [];
+  if (hits.length === 0) return [];
+
+  // Collapse: keep best-scoring chunk per article.
+  const byArticleId = new Map();
+  for (const hit of hits) {
+    const articleId = hit.id.split(":")[0];
+    if (!byArticleId.has(articleId) || hit.score > byArticleId.get(articleId).score) {
+      byArticleId.set(articleId, {
+        articleId,
+        id: articleId,
+        headline: hit.headline,
+        details: hit.details,
+        attachment_url: hit.attachment_url,
+        score: hit.score,
+      });
+    }
+  }
+
+  const idf = buildIDF(hits.map((h) => `${h.headline} ${h.details}`));
+  const queryVecSparse = tfidfEmbed(trimmed, idf);
+
+  return [...byArticleId.values()]
+    .filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k)
+    .map((r) => {
+      const best_passage = selectBestPassage(r.details, queryVecSparse, idf);
+      return {
+        id: r.id,
+        headline: r.headline,
+        details: r.details.replace(/\s+/g, " ").trim().slice(0, 240),
+        score: parseFloat(r.score.toFixed(4)),
+        attachment_url: r.attachment_url,
+        best_passage,
+      };
+    });
+}
+
+// ---------------------------------------------------------------------------
+// File-backed search path (fallback when MILVUS_HOST not set)
+// ---------------------------------------------------------------------------
+
+async function _searchFile(query, k) {
   const rows = loadRows();
   if (rows.length === 0) return [];
 
   const trimmed = (query ?? "").trim();
   if (!trimmed) return [];
 
-  // Embed query with MiniLM — same model used at ingest.
   const embedder = await getEmbedder();
   const [queryEmbedding] = await embedder.embed([trimmed]);
 
-  // Score every chunk via COSINE similarity on stored embeddings.
   const scored = rows
     .filter((row) => Array.isArray(row.embedding) && row.embedding.length > 0)
     .map((row) => ({
@@ -190,10 +257,8 @@ async function _searchImpl(query, k) {
       score: dotProduct(queryEmbedding, row.embedding),
     }));
 
-  // Over-fetch the top EF chunks before collapsing to articles.
   const candidates = scored.sort((a, b) => b.score - a.score).slice(0, EF);
 
-  // Collapse: keep the best-scoring chunk per article.
   const byArticleId = new Map();
   for (const c of candidates) {
     if (!byArticleId.has(c.articleId) || c.score > byArticleId.get(c.articleId).score) {
@@ -201,7 +266,6 @@ async function _searchImpl(query, k) {
     }
   }
 
-  // Build full article text per article id for best_passage extraction.
   const articleTexts = new Map();
   for (const row of rows) {
     const aid = row.id.split(":")[0];
@@ -212,7 +276,6 @@ async function _searchImpl(query, k) {
     }
   }
 
-  // Build TF-IDF space for best_passage sentence scoring.
   const idf = buildIDF(rows.map((r) => `${r.headline} ${r.details}`));
   const queryVecSparse = tfidfEmbed(trimmed, idf);
 
@@ -232,6 +295,17 @@ async function _searchImpl(query, k) {
         best_passage,
       };
     });
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+async function _searchImpl(query, k) {
+  if (process.env.MILVUS_HOST) {
+    return _searchMilvus(query, k);
+  }
+  return _searchFile(query, k);
 }
 
 // Returns a Promise — call sites must await.
