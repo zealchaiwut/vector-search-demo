@@ -6,7 +6,10 @@ import { runInit } from "./commands/init.js";
 const [, , command, ...args] = process.argv;
 
 if (command === "search") {
-  runSearch(args);
+  runSearch(args).catch((err) => {
+    process.stderr.write(`Error: ${err.message}\n`);
+    process.exit(1);
+  });
 } else if (command === "ingest") {
   runIngest().catch((err) => {
     process.stderr.write(`Error: ${err.message}\n`);

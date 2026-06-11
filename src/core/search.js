@@ -1,10 +1,10 @@
 /**
  * Core search logic for vector-search-demo.
  *
- * Reads the ingested, file-backed collection (collection.json, produced by
- * `ingest`), rebuilds a TF-IDF space over the stored chunk texts, embeds the
- * query into that same space, and ranks articles by cosine similarity with
- * ef-style over-fetching and per-article chunk collapsing.
+ * Embeds the query with the MiniLM model (same model used at ingest), then
+ * ranks chunks by COSINE similarity against their stored embeddings.
+ * Uses EF=64 over-fetching and per-article chunk collapsing before returning
+ * the top-k shaped results.
  *
  * Search depends on ingest: with an empty/absent collection it returns [].
  */
@@ -12,14 +12,21 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createEmbedder } from "../embeddings/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
 
 const EF = 64;
 
+let _embedder = null;
+async function getEmbedder() {
+  if (!_embedder) _embedder = await createEmbedder();
+  return _embedder;
+}
+
 // ---------------------------------------------------------------------------
-// Collection access — load the ingested chunk rows from disk
+// Collection access
 // ---------------------------------------------------------------------------
 
 function loadRows() {
@@ -33,7 +40,17 @@ function loadRows() {
 }
 
 // ---------------------------------------------------------------------------
-// TF-IDF embedding + cosine similarity (sparse, Map-backed)
+// Dense vector cosine similarity (dot product on pre-normalised vectors)
+// ---------------------------------------------------------------------------
+
+function dotProduct(a, b) {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+  return sum;
+}
+
+// ---------------------------------------------------------------------------
+// TF-IDF helpers — used only for best_passage sentence scoring
 // ---------------------------------------------------------------------------
 
 function tokenize(text) {
@@ -55,7 +72,7 @@ function buildIDF(texts) {
   return idf;
 }
 
-function embed(text, idf) {
+function tfidfEmbed(text, idf) {
   const tokens = tokenize(text);
   if (tokens.length === 0) return null;
   const tf = new Map();
@@ -73,7 +90,7 @@ function embed(text, idf) {
   return out;
 }
 
-function cosineSimilarity(a, b) {
+function sparseDot(a, b) {
   if (!a || !b) return 0;
   let dot = 0;
   for (const [t, va] of a) {
@@ -112,7 +129,6 @@ function splitIntoSentences(text) {
     }
   }
 
-  // Remaining text without terminal punctuation
   if (segStart < len) {
     const raw = text.slice(segStart);
     const trimmed = raw.trim();
@@ -137,7 +153,7 @@ function selectBestPassage(docText, queryVec, idf) {
   let bestScore = -1;
 
   for (const sentence of sentences) {
-    const score = cosineSimilarity(queryVec, embed(sentence.text, idf));
+    const score = sparseDot(queryVec, tfidfEmbed(sentence.text, idf));
     if (score > bestScore) {
       bestScore = score;
       best = sentence;
@@ -151,25 +167,28 @@ function selectBestPassage(docText, queryVec, idf) {
 // Public API
 // ---------------------------------------------------------------------------
 
-export function searchDocuments(query, k = 10) {
+async function _searchImpl(query, k) {
   const rows = loadRows();
   if (rows.length === 0) return [];
 
-  // Build the TF-IDF space over the ingested chunk corpus, then embed query.
-  const idf = buildIDF(rows.map((r) => `${r.headline} ${r.details}`));
-  const queryVec = embed(query, idf);
-  if (!queryVec) return [];
+  const trimmed = (query ?? "").trim();
+  if (!trimmed) return [];
 
-  // Score every chunk by cosine similarity in the shared space.
-  const scored = rows.map((row) => ({
-    // Extract article id from chunk id (format: "article-001:0")
-    articleId: row.id.split(":")[0],
-    id: row.id,
-    headline: row.headline,
-    details: row.details,
-    attachment_url: row.attachment_url,
-    score: cosineSimilarity(queryVec, embed(`${row.headline} ${row.details}`, idf)),
-  }));
+  // Embed query with MiniLM — same model used at ingest.
+  const embedder = await getEmbedder();
+  const [queryEmbedding] = await embedder.embed([trimmed]);
+
+  // Score every chunk via COSINE similarity on stored embeddings.
+  const scored = rows
+    .filter((row) => Array.isArray(row.embedding) && row.embedding.length > 0)
+    .map((row) => ({
+      articleId: row.id.split(":")[0],
+      id: row.id,
+      headline: row.headline,
+      details: row.details,
+      attachment_url: row.attachment_url,
+      score: dotProduct(queryEmbedding, row.embedding),
+    }));
 
   // Over-fetch the top EF chunks before collapsing to articles.
   const candidates = scored.sort((a, b) => b.score - a.score).slice(0, EF);
@@ -182,7 +201,7 @@ export function searchDocuments(query, k = 10) {
     }
   }
 
-  // Build full article text per article id (chunk details joined in collection order).
+  // Build full article text per article id for best_passage extraction.
   const articleTexts = new Map();
   for (const row of rows) {
     const aid = row.id.split(":")[0];
@@ -193,14 +212,17 @@ export function searchDocuments(query, k = 10) {
     }
   }
 
-  // Shape results: drop zero-score articles, sort, cap at k.
+  // Build TF-IDF space for best_passage sentence scoring.
+  const idf = buildIDF(rows.map((r) => `${r.headline} ${r.details}`));
+  const queryVecSparse = tfidfEmbed(trimmed, idf);
+
   return [...byArticleId.values()]
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, k)
     .map((r) => {
       const articleText = articleTexts.get(r.articleId) ?? r.details;
-      const best_passage = selectBestPassage(articleText, queryVec, idf);
+      const best_passage = selectBestPassage(articleText, queryVecSparse, idf);
       return {
         id: r.articleId,
         headline: r.headline,
@@ -210,4 +232,9 @@ export function searchDocuments(query, k = 10) {
         best_passage,
       };
     });
+}
+
+// Returns a Promise — call sites must await.
+export function searchDocuments(query, k = 10) {
+  return _searchImpl(query, k);
 }
