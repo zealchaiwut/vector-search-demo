@@ -31,6 +31,7 @@ async function getEmbedder() {
 // Attachment URL type discriminator
 // ---------------------------------------------------------------------------
 
+/** @returns {"external" | "local" | null} */
 function resolveAttachmentUrlType(url) {
   if (!url) return null;
   if (url.startsWith("/download/")) return "local";
