@@ -33,7 +33,47 @@
   }
   .wrap { max-width: 720px; margin: 0 auto; padding: 52px 24px 96px; }
 
-  header { margin-bottom: 30px; }
+  header { margin-bottom: 24px; }
+
+  /* Tab navigation */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 28px;
+    overflow-x: auto;
+  }
+  .tab {
+    appearance: none;
+    border: 0;
+    background: none;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    padding: 10px 14px;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] {
+    color: var(--ink);
+    border-bottom-color: var(--accent);
+  }
+  .tab:focus-visible {
+    outline: 3px solid var(--accent-soft);
+    outline-offset: -3px;
+    border-radius: 6px;
+  }
+  .panel { animation: panel-in 0.18s ease-out; }
+  .panel[hidden] { display: none; }
+  @keyframes panel-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
   h1 {
     font-family: var(--serif);
     font-weight: 600;
@@ -197,6 +237,7 @@
   @media (prefers-reduced-motion: reduce) {
     .card { animation: none; }
     .rel .bar > span { transition: none; }
+    .panel { animation: none; }
   }
   @media (max-width: 520px) {
     .card-head { flex-direction: column; }
@@ -205,18 +246,6 @@
   }
 
   /* Add Article form */
-  .add-section {
-    margin-top: 52px;
-    border-top: 1px solid var(--line);
-    padding-top: 36px;
-  }
-  .add-section h2 {
-    font-family: var(--serif);
-    font-weight: 600;
-    font-size: 22px;
-    letter-spacing: -0.01em;
-    margin: 0 0 20px;
-  }
   .add-form { display: flex; flex-direction: column; gap: 14px; }
   .field { display: flex; flex-direction: column; gap: 5px; }
   .field label {
@@ -282,18 +311,6 @@
   }
 
   /* Bulk Upload section */
-  .bulk-section {
-    margin-top: 52px;
-    border-top: 1px solid var(--line);
-    padding-top: 36px;
-  }
-  .bulk-section h2 {
-    font-family: var(--serif);
-    font-weight: 600;
-    font-size: 22px;
-    letter-spacing: -0.01em;
-    margin: 0 0 6px;
-  }
   .bulk-section > p {
     margin: 0 0 20px;
     font-size: 14px;
@@ -387,18 +404,6 @@
   .bulk-error-list li { margin-bottom: 4px; }
 
   /* Articles list section */
-  .articles-section {
-    margin-top: 52px;
-    border-top: 1px solid var(--line);
-    padding-top: 36px;
-  }
-  .articles-section h2 {
-    font-family: var(--serif);
-    font-weight: 600;
-    font-size: 22px;
-    letter-spacing: -0.01em;
-    margin: 0 0 20px;
-  }
   .article-list { display: flex; flex-direction: column; gap: 10px; }
   .article-row {
     background: var(--surface);
@@ -532,6 +537,14 @@
     <p>Semantic similarity search over a small document corpus.</p>
   </header>
 
+  <nav class="tabs" role="tablist" aria-label="Demo sections">
+    <button class="tab" id="tab-search" role="tab" aria-selected="true" aria-controls="panel-search" type="button">Search</button>
+    <button class="tab" id="tab-add" role="tab" aria-selected="false" aria-controls="panel-add" type="button">Add Article</button>
+    <button class="tab" id="tab-bulk" role="tab" aria-selected="false" aria-controls="panel-bulk" type="button">Bulk Import</button>
+    <button class="tab" id="tab-articles" role="tab" aria-selected="false" aria-controls="panel-articles" type="button">All Articles</button>
+  </nav>
+
+  <section class="panel" id="panel-search" role="tabpanel" aria-labelledby="tab-search">
   <div class="searchbar">
     <input
       id="q"
@@ -545,9 +558,9 @@
 
   <div class="status" id="status" aria-live="polite"></div>
   <div class="results" id="results"></div>
+  </section>
 
-  <section class="add-section" aria-label="Add Article">
-    <h2>Add Article</h2>
+  <section class="panel add-section" id="panel-add" role="tabpanel" aria-labelledby="tab-add" hidden>
     <form class="add-form" id="add-form" novalidate>
       <div class="field">
         <label for="art-headline">Headline</label>
@@ -566,8 +579,7 @@
     <div class="add-feedback" id="add-feedback" aria-live="polite"></div>
   </section>
 
-  <section class="bulk-section" aria-label="Bulk Import Articles">
-    <h2>Bulk Import</h2>
+  <section class="panel bulk-section" id="panel-bulk" role="tabpanel" aria-labelledby="tab-bulk" hidden>
     <p>Upload a <strong>.json</strong> or <strong>.csv</strong> file. Each row must have <code>headline</code>, <code>details</code>, and <code>attachment_url</code> fields.</p>
     <div class="bulk-dropzone" id="bulk-dropzone">
       <label class="bulk-dropzone-label" for="bulk-file">
@@ -582,8 +594,7 @@
     <div class="bulk-feedback" id="bulk-feedback" aria-live="polite"></div>
   </section>
 
-  <section class="articles-section" aria-label="All Articles">
-    <h2>All Articles</h2>
+  <section class="panel articles-section" id="panel-articles" role="tabpanel" aria-labelledby="tab-articles" hidden>
     <div class="article-list" id="article-list">
       <p class="articles-empty">Loading articles…</p>
     </div>
@@ -592,6 +603,48 @@
 
 <script>
   const API_BASE = "";
+
+  // ---------------------------------------------------------------------------
+  // Tab navigation — hash-synced, keyboard-accessible
+  // ---------------------------------------------------------------------------
+
+  const TAB_HASHES = {
+    "tab-search": "#search",
+    "tab-add": "#add",
+    "tab-bulk": "#bulk",
+    "tab-articles": "#articles",
+  };
+  const tabEls = Array.from(document.querySelectorAll(".tab"));
+
+  function selectTab(tab, { focus = false, updateHash = true } = {}) {
+    for (const t of tabEls) {
+      const selected = t === tab;
+      t.setAttribute("aria-selected", String(selected));
+      t.tabIndex = selected ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !selected;
+    }
+    if (focus) tab.focus();
+    if (updateHash) history.replaceState(null, "", TAB_HASHES[tab.id]);
+    if (tab.id === "tab-articles") loadArticles();
+  }
+
+  tabEls.forEach((tab) => {
+    tab.addEventListener("click", () => selectTab(tab));
+  });
+
+  document.querySelector(".tabs").addEventListener("keydown", (e) => {
+    const idx = tabEls.indexOf(document.activeElement);
+    if (idx === -1) return;
+    let next = null;
+    if (e.key === "ArrowRight") next = tabEls[(idx + 1) % tabEls.length];
+    else if (e.key === "ArrowLeft") next = tabEls[(idx - 1 + tabEls.length) % tabEls.length];
+    else if (e.key === "Home") next = tabEls[0];
+    else if (e.key === "End") next = tabEls[tabEls.length - 1];
+    if (next) {
+      e.preventDefault();
+      selectTab(next, { focus: true });
+    }
+  });
 
   const input    = document.getElementById("q");
   const btn      = document.getElementById("go");
@@ -853,7 +906,7 @@
         }
         row.remove();
         if (articleListEl.children.length === 0) {
-          articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Add one above.</p>`;
+          articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Create one in the Add Article tab.</p>`;
         }
       } catch (err) {
         alert(`Delete failed: ${err.message}`);
@@ -871,7 +924,7 @@
       const articles = Array.isArray(data.articles) ? data.articles : [];
       articleListEl.innerHTML = "";
       if (articles.length === 0) {
-        articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Add one above.</p>`;
+        articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Create one in the Add Article tab.</p>`;
         return;
       }
       for (const article of articles) {
@@ -882,7 +935,10 @@
     }
   }
 
-  loadArticles();
+  // Restore the tab from the URL hash (e.g. /#articles); default is Search.
+  // Also establishes the roving tabindex on the tab buttons.
+  const initialTab = tabEls.find((t) => TAB_HASHES[t.id] === location.hash);
+  selectTab(initialTab ?? tabEls[0], { updateHash: false });
 
   // ---------------------------------------------------------------------------
   // Bulk Import
