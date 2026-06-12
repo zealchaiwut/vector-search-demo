@@ -352,6 +352,7 @@
   .bulk-actions {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
     margin-top: 14px;
   }
@@ -370,6 +371,87 @@
   }
   .btn-bulk-upload:hover { filter: brightness(1.07); }
   .btn-bulk-upload:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-bulk-template {
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 20px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-bulk-template:hover { background: rgba(0,0,0,0.04); }
+  /* Articles toolbar + clear/backup buttons */
+  .articles-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .btn-backup, .btn-clear-all {
+    border: 0;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 20px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s, background 0.15s, opacity 0.15s;
+  }
+  .btn-backup {
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+  }
+  .btn-backup:hover { background: rgba(0,0,0,0.04); }
+  .btn-clear-all { background: var(--red); color: #fff; }
+  .btn-clear-all:hover { filter: brightness(1.07); }
+  .btn-backup:disabled, .btn-clear-all:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* Confirmation modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal-overlay[hidden] { display: none; }
+  .modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  }
+  .modal h3 { margin: 0 0 10px; font-size: 19px; }
+  .modal p { margin: 0 0 20px; color: #444; line-height: 1.5; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+  .btn-modal-cancel, .btn-modal-confirm {
+    border: 0;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 18px;
+    height: 38px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s, background 0.15s;
+  }
+  .btn-modal-cancel { background: #e9e9ec; color: #222; }
+  .btn-modal-cancel:hover { background: #dedee2; }
+  .btn-modal-confirm { background: var(--red); color: #fff; }
+  .btn-modal-confirm:hover { filter: brightness(1.07); }
+  .btn-modal-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
   .bulk-feedback {
     font-size: 14px;
     border-radius: 8px;
@@ -589,16 +671,32 @@
       <div class="bulk-filename" id="bulk-filename"></div>
     </div>
     <div class="bulk-actions">
+      <button class="btn-bulk-template" id="bulk-template-btn" type="button">Download template</button>
       <button class="btn-bulk-upload" id="bulk-upload-btn" type="button" disabled>Upload &amp; Import</button>
     </div>
     <div class="bulk-feedback" id="bulk-feedback" aria-live="polite"></div>
   </section>
 
   <section class="panel articles-section" id="panel-articles" role="tabpanel" aria-labelledby="tab-articles" hidden>
+    <div class="articles-toolbar">
+      <button class="btn-backup" id="backup-btn" type="button">Back up all articles</button>
+      <button class="btn-clear-all" id="clear-all-btn" type="button">Clear all articles</button>
+    </div>
     <div class="article-list" id="article-list">
       <p class="articles-empty">Loading articles…</p>
     </div>
   </section>
+</div>
+
+<div class="modal-overlay" id="clear-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clear-modal-title">
+    <h3 id="clear-modal-title">Clear all articles?</h3>
+    <p id="clear-modal-body">This permanently deletes every article. This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" id="clear-cancel-btn" type="button">Cancel</button>
+      <button class="btn-modal-confirm" id="clear-confirm-btn" type="button">Delete all</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -935,6 +1033,90 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Articles toolbar — back up (download JSON) + clear all (confirm modal)
+  // ---------------------------------------------------------------------------
+
+  const backupBtn       = document.getElementById("backup-btn");
+  const clearAllBtn     = document.getElementById("clear-all-btn");
+  const clearModal      = document.getElementById("clear-modal");
+  const clearCancelBtn  = document.getElementById("clear-cancel-btn");
+  const clearConfirmBtn = document.getElementById("clear-confirm-btn");
+  const clearModalBody  = document.getElementById("clear-modal-body");
+
+  async function fetchAllArticles() {
+    const resp = await fetch(`${API_BASE}/articles`);
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    const data = await resp.json();
+    return Array.isArray(data.articles) ? data.articles : [];
+  }
+
+  // Back up: download all articles as a JSON file (re-importable via Bulk Import).
+  backupBtn.addEventListener("click", async () => {
+    backupBtn.disabled = true;
+    try {
+      const articles = await fetchAllArticles();
+      if (articles.length === 0) {
+        alert("No articles to back up.");
+        return;
+      }
+      const rows = articles.map(a => ({
+        headline: a.headline ?? "",
+        details: a.details ?? "",
+        attachment_url: a.attachment_url ?? "",
+      }));
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.download = `articles-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Backup failed: ${err.message}`);
+    } finally {
+      backupBtn.disabled = false;
+    }
+  });
+
+  function closeClearModal() { clearModal.hidden = true; }
+
+  clearAllBtn.addEventListener("click", () => {
+    clearModalBody.textContent = "This permanently deletes every article. This cannot be undone.";
+    clearConfirmBtn.disabled = false;
+    clearConfirmBtn.textContent = "Delete all";
+    clearModal.hidden = false;
+  });
+  clearCancelBtn.addEventListener("click", closeClearModal);
+  clearModal.addEventListener("click", (e) => { if (e.target === clearModal) closeClearModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !clearModal.hidden) closeClearModal();
+  });
+
+  clearConfirmBtn.addEventListener("click", async () => {
+    clearConfirmBtn.disabled = true;
+    clearConfirmBtn.textContent = "Deleting…";
+    try {
+      const articles = await fetchAllArticles();
+      let failed = 0;
+      for (const article of articles) {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(article.id)}`, {
+          method: "DELETE",
+        });
+        if (!resp.ok) failed++;
+      }
+      closeClearModal();
+      loadArticles();
+      if (failed > 0) alert(`${failed} article${failed === 1 ? "" : "s"} could not be deleted.`);
+    } catch (err) {
+      closeClearModal();
+      alert(`Clear failed: ${err.message}`);
+    }
+  });
+
   // Restore the tab from the URL hash (e.g. /#articles); default is Search.
   // Also establishes the roving tabindex on the tab buttons.
   const initialTab = tabEls.find((t) => TAB_HASHES[t.id] === location.hash);
@@ -948,9 +1130,40 @@
   const bulkFileInput = document.getElementById("bulk-file");
   const bulkFilename  = document.getElementById("bulk-filename");
   const bulkUploadBtn = document.getElementById("bulk-upload-btn");
+  const bulkTemplateBtn = document.getElementById("bulk-template-btn");
   const bulkFeedback  = document.getElementById("bulk-feedback");
 
   let selectedBulkFile = null;
+
+  // Download a ready-to-edit bulk-import template (matches the /articles/bulk schema).
+  bulkTemplateBtn.addEventListener("click", () => {
+    const template = [
+      {
+        headline: "Coastal cities trial tidal energy turbines",
+        details: "Three coastal municipalities began a pilot of submerged tidal turbines this week, aiming to cover a fifth of local grid demand from predictable ocean currents within two years.",
+        attachment_url: "https://example.com/articles/tidal-energy-pilot.pdf"
+      },
+      {
+        headline: "Open-source model speeds up protein folding",
+        details: "Researchers released an open-source model that predicts protein structures in minutes on commodity hardware, lowering the barrier for small labs to run structural biology experiments.",
+        attachment_url: "https://example.com/articles/protein-folding-model.pdf"
+      },
+      {
+        headline: "City launches free transit on high-pollution days",
+        details: "A metro authority will waive all bus and rail fares automatically whenever air-quality readings cross an unhealthy threshold, hoping to cut car trips during smog episodes. attachment_url is optional and may be left blank.",
+        attachment_url: ""
+      }
+    ];
+    const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "bulk-articles-template.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
 
   bulkDropzone.addEventListener("click", () => bulkFileInput.click());
 
