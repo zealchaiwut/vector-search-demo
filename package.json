@@ -8,8 +8,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/cli.ts serve",
-    "start": "node dist/cli.js serve",
+    "dev": "node --env-file=.env --watch src/server.mjs",
+    "start": "node --env-file=.env src/server.mjs",
     "typecheck": "tsc --noEmit",
     "eval": "node src/eval/index.js",
     "milvus:up": "docker compose up -d",
