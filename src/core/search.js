@@ -115,29 +115,49 @@ function splitIntoSentences(text) {
   return sentences;
 }
 
+// How many sentences of surrounding context to return on each side of the hit.
+const CONTEXT_SENTENCES = 2;
+
 // Pick the single most relevant sentence by embedding each sentence and taking
 // the highest cosine similarity to the query embedding (same model as ranking).
+// Also returns the neighboring sentences (before/after) so the UI can show the
+// hit in context — a semantic match rarely lands on a standalone sentence.
 async function selectBestPassage(docText, queryEmbedding, embedder) {
   const sentences = splitIntoSentences(docText);
   if (sentences.length === 0) {
     const trimmed = docText.trim();
-    return { text: trimmed, start_offset: 0, end_offset: trimmed.length };
+    return { text: trimmed, start_offset: 0, end_offset: trimmed.length, context: { before: "", after: "" } };
   }
 
   const vectors = await embedder.embed(sentences.map((s) => s.text));
 
-  let best = sentences[0];
+  let bestIdx = 0;
   let bestScore = -Infinity;
 
   for (let i = 0; i < sentences.length; i++) {
     const score = cosineSimilarity(queryEmbedding, vectors[i]);
     if (score > bestScore) {
       bestScore = score;
-      best = sentences[i];
+      bestIdx = i;
     }
   }
 
-  return { text: best.text, start_offset: best.start, end_offset: best.end };
+  const best = sentences[bestIdx];
+  const before = sentences
+    .slice(Math.max(0, bestIdx - CONTEXT_SENTENCES), bestIdx)
+    .map((s) => s.text)
+    .join(" ");
+  const after = sentences
+    .slice(bestIdx + 1, bestIdx + 1 + CONTEXT_SENTENCES)
+    .map((s) => s.text)
+    .join(" ");
+
+  return {
+    text: best.text,
+    start_offset: best.start,
+    end_offset: best.end,
+    context: { before, after },
+  };
 }
 
 // ---------------------------------------------------------------------------

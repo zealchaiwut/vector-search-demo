@@ -204,18 +204,87 @@
     margin-bottom: 4px;
   }
   .passage-text {
-    background: transparent;
     color: #2b2f38;
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.6;
+    margin: 0;
   }
+  /* The semantically closest sentence */
+  .passage-text mark {
+    background: #fde68a;
+    color: #1f2430;
+    border-radius: 3px;
+    padding: 1px 2px;
+  }
+  /* Surrounding context sentences (before/after) — dimmed */
+  .passage-text .ctx { color: #8a90a0; }
   /* Literal query words that happen to appear in the passage */
-  .passage-text .qw { background: #e0e7ff; border-radius: 3px; padding: 0 2px; }
+  .qw { background: #e0e7ff; border-radius: 3px; padding: 0 2px; font-weight: 600; }
+
+  .view-full {
+    margin-top: 8px;
+    background: none;
+    border: none;
+    padding: 0;
+    color: #6366f1;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .view-full:hover { text-decoration: underline; }
 
   .search-note {
     font-size: 12.5px;
     color: var(--muted);
     margin: 8px 0 0;
+  }
+
+  /* Full-article modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 18, 28, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 50;
+  }
+  .modal-overlay[hidden] { display: none; }
+  .modal {
+    background: #fff;
+    border-radius: 12px;
+    max-width: 720px;
+    width: 100%;
+    max-height: 85vh;
+    overflow: auto;
+    padding: 24px 28px;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .modal h2 { margin: 0 28px 14px 0; font-size: 19px; }
+  .modal-close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .modal-body {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: #353a44;
+    white-space: pre-wrap;
+  }
+  .modal-body mark {
+    background: #fde68a;
+    color: #1f2430;
+    border-radius: 3px;
+    padding: 1px 3px;
   }
 
   .card-foot {
@@ -672,6 +741,14 @@
   <p class="search-note">Highlights show the closest passage by <strong>meaning</strong> — semantic search, not exact keyword matches.</p>
   <div class="status" id="status" aria-live="polite"></div>
   <div class="results" id="results"></div>
+
+  <div class="modal-overlay" id="full-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="full-title">
+      <button type="button" class="modal-close" id="full-close" aria-label="Close">&times;</button>
+      <h2 id="full-title"></h2>
+      <div class="modal-body" id="full-body"></div>
+    </div>
+  </div>
   </section>
 
   <section class="panel add-section" id="panel-add" role="tabpanel" aria-labelledby="tab-add" hidden>
@@ -803,18 +880,24 @@
   // ("how", "does", "the") doesn't get highlighted in the passage.
   const STOPWORDS = new Set(["the","and","for","does","how","what","with","this","that","are","was","you","your","from","into","can","will","why","when","where","which"]);
 
-  // Light-bold any literal query words that appear in the passage. The passage
-  // itself is the semantic highlight; this is a secondary cue for exact overlaps.
-  function highlightPassage(text, query) {
-    const escaped = escapeHtml(text);
+  // Light-bold any literal query words within an ALREADY-ESCAPED html string.
+  // The passage itself is the semantic highlight; this is a secondary cue for
+  // exact overlaps. Operating on escaped text keeps it safe to call after other
+  // markup (e.g. <mark>) has been inserted via sentinels.
+  function boldQueryWords(escapedHtml, query) {
     const tokens = (String(query || "").toLowerCase().match(/[a-z0-9]{3,}/g) || [])
       .filter(t => !STOPWORDS.has(t));
-    if (tokens.length === 0) return escaped;
+    if (tokens.length === 0) return escapedHtml;
     const uniq = [...new Set(tokens)]
       .sort((a, b) => b.length - a.length)
       .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const re = new RegExp(`\\b(${uniq.join("|")})\\b`, "gi");
-    return escaped.replace(re, '<strong class="qw">$&</strong>');
+    return escapedHtml.replace(re, '<strong class="qw">$&</strong>');
+  }
+
+  // Escape a raw passage and light-bold the query words inside it.
+  function highlightPassage(text, query) {
+    return boldQueryWords(escapeHtml(text), query);
   }
 
   function renderResults(results, query) {
@@ -825,11 +908,16 @@
       const details       = r.details ?? "";
       const articleId     = r.id ?? "";
       const attachmentUrl = r.attachment_url ?? null;
-      const passageText   = r.best_passage && r.best_passage.text ? r.best_passage.text : "";
+      const bp            = r.best_passage || null;
+      const passageText   = bp && bp.text ? bp.text : "";
+      const ctx           = bp && bp.context ? bp.context : { before: "", after: "" };
+      const before        = ctx.before ? `<span class="ctx">${highlightPassage(ctx.before, query)}</span> ` : "";
+      const after         = ctx.after ? ` <span class="ctx">${highlightPassage(ctx.after, query)}</span>` : "";
       const passageBlock  = passageText ? `
           <div class="passage">
             <div class="passage-label">Closest passage</div>
-            <mark class="passage-text">${highlightPassage(passageText, query)}</mark>
+            <p class="passage-text">${before}<mark>${highlightPassage(passageText, query)}</mark>${after}</p>
+            <button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(passageText)}">View full article ↗</button>
           </div>` : "";
       return `
         <article class="card">
@@ -856,6 +944,7 @@
   }
 
   async function doSearch(query) {
+    lastQuery = query;
     btn.disabled = true;
     statusEl.textContent = "Searching…";
     resultsEl.innerHTML = "";
@@ -889,6 +978,67 @@
       const query = input.value.trim();
       if (query) doSearch(query);
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Full-article modal with best-passage highlight
+  // ---------------------------------------------------------------------------
+
+  let lastQuery = "";
+  const fullModal = document.getElementById("full-modal");
+  const fullBody  = document.getElementById("full-body");
+  const fullTitle = document.getElementById("full-title");
+
+  // Wrap the best passage in <mark> and light-bold query words, on the full
+  // article text. Sentinels (/) mark the passage span before word
+  // bolding so the inserted <mark> tag is never matched by the bolding regex.
+  function renderFullWithHighlight(text, passageText, query) {
+    let html = escapeHtml(text);
+    const needle = escapeHtml(passageText || "");
+    if (needle) {
+      const idx = html.indexOf(needle);
+      if (idx !== -1) {
+        html = html.slice(0, idx) + "" + needle + "" + html.slice(idx + needle.length);
+      }
+    }
+    html = boldQueryWords(html, query);
+    return html.split("").join("<mark>").split("").join("</mark>");
+  }
+
+  async function openFull(id, passageText) {
+    fullTitle.textContent = id;
+    fullBody.textContent = "Loading…";
+    fullModal.hidden = false;
+    try {
+      const resp = await fetch(`${API_BASE}/download/${encodeURIComponent(id)}`);
+      if (!resp.ok) throw new Error("unavailable");
+      const text = await resp.text();
+      fullBody.innerHTML = renderFullWithHighlight(text, passageText, lastQuery);
+      const mark = fullBody.querySelector("mark");
+      if (mark) mark.scrollIntoView({ block: "center" });
+    } catch {
+      fullBody.innerHTML = '<p class="search-note">Full article text is unavailable for this item.</p>';
+    }
+  }
+
+  function closeFull() {
+    fullModal.hidden = true;
+    fullBody.innerHTML = "";
+  }
+
+  // Delegate "View full article" clicks from result cards.
+  resultsEl.addEventListener("click", (e) => {
+    const btnEl = e.target.closest(".view-full");
+    if (!btnEl) return;
+    openFull(btnEl.dataset.id, btnEl.dataset.passage || "");
+  });
+
+  document.getElementById("full-close").addEventListener("click", closeFull);
+  fullModal.addEventListener("click", (e) => {
+    if (e.target === fullModal) closeFull();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !fullModal.hidden) closeFull();
   });
 
   // ---------------------------------------------------------------------------
