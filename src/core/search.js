@@ -67,55 +67,11 @@ function dotProduct(a, b) {
   return sum;
 }
 
-// ---------------------------------------------------------------------------
-// TF-IDF helpers — used for best_passage sentence scoring
-// ---------------------------------------------------------------------------
-
-function tokenize(text) {
-  return text.toLowerCase().match(/\b[a-z0-9]+\b/g) ?? [];
-}
-
-function buildIDF(texts) {
-  const N = texts.length;
-  const df = new Map();
-  for (const text of texts) {
-    for (const t of new Set(tokenize(text))) {
-      df.set(t, (df.get(t) ?? 0) + 1);
-    }
-  }
-  const idf = new Map();
-  for (const [t, count] of df) {
-    idf.set(t, Math.log((N + 1) / (count + 1)) + 1);
-  }
-  return idf;
-}
-
-function tfidfEmbed(text, idf) {
-  const tokens = tokenize(text);
-  if (tokens.length === 0) return null;
-  const tf = new Map();
-  for (const t of tokens) tf.set(t, (tf.get(t) ?? 0) + 1);
-  const vec = new Map();
-  for (const [t, count] of tf) {
-    vec.set(t, (count / tokens.length) * (idf.get(t) ?? Math.log(2)));
-  }
-  let norm = 0;
-  for (const v of vec.values()) norm += v * v;
-  norm = Math.sqrt(norm);
-  if (norm === 0) return null;
-  const out = new Map();
-  for (const [t, v] of vec) out.set(t, v / norm);
-  return out;
-}
-
-function sparseDot(a, b) {
-  if (!a || !b) return 0;
-  let dot = 0;
-  for (const [t, va] of a) {
-    const vb = b.get(t);
-    if (vb !== undefined) dot += va * vb;
-  }
-  return dot;
+// MiniLM embeddings are L2-normalised, so cosine similarity is just the dot
+// product. Best-passage selection uses the same dense embeddings as ranking,
+// so the highlighted passage reflects semantic closeness — not keyword overlap.
+function cosineSimilarity(a, b) {
+  return dotProduct(a, b);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,21 +115,25 @@ function splitIntoSentences(text) {
   return sentences;
 }
 
-function selectBestPassage(docText, queryVec, idf) {
+// Pick the single most relevant sentence by embedding each sentence and taking
+// the highest cosine similarity to the query embedding (same model as ranking).
+async function selectBestPassage(docText, queryEmbedding, embedder) {
   const sentences = splitIntoSentences(docText);
   if (sentences.length === 0) {
     const trimmed = docText.trim();
     return { text: trimmed, start_offset: 0, end_offset: trimmed.length };
   }
 
-  let best = sentences[0];
-  let bestScore = -1;
+  const vectors = await embedder.embed(sentences.map((s) => s.text));
 
-  for (const sentence of sentences) {
-    const score = sparseDot(queryVec, tfidfEmbed(sentence.text, idf));
+  let best = sentences[0];
+  let bestScore = -Infinity;
+
+  for (let i = 0; i < sentences.length; i++) {
+    const score = cosineSimilarity(queryEmbedding, vectors[i]);
     if (score > bestScore) {
       bestScore = score;
-      best = sentence;
+      best = sentences[i];
     }
   }
 
@@ -181,9 +141,14 @@ function selectBestPassage(docText, queryVec, idf) {
 }
 
 // ---------------------------------------------------------------------------
-// Milvus-backed search path (used when MILVUS_HOST is set)
+// Milvus-backed search path (used when DATA_BACKEND=milvus / MILVUS_HOST set)
 // ---------------------------------------------------------------------------
-
+//
+// TODO(milvus): the app currently runs mock-only. This path shares the semantic
+// best_passage logic with the file backend, but has NOT been re-verified end to
+// end against a live Milvus instance after the semantic-highlight change. Verify
+// against a real Milvus (docker compose) when the Milvus connection work is
+// picked up — confirm result shape, offsets, and passage selection still hold.
 async function _searchMilvus(query, k) {
   const trimmed = (query ?? "").trim();
   if (!trimmed) return [];
@@ -241,15 +206,14 @@ async function _searchMilvus(query, k) {
     }
   }
 
-  const idf = buildIDF(hits.map((h) => `${h.headline} ${h.details}`));
-  const queryVecSparse = tfidfEmbed(trimmed, idf);
-
-  return [...byArticleId.values()]
+  const top = [...byArticleId.values()]
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, k)
-    .map((r) => {
-      const best_passage = selectBestPassage(r.details, queryVecSparse, idf);
+    .slice(0, k);
+
+  return Promise.all(
+    top.map(async (r) => {
+      const best_passage = await selectBestPassage(r.details, queryEmbedding, embedder);
       return {
         id: r.id,
         headline: r.headline,
@@ -259,7 +223,8 @@ async function _searchMilvus(query, k) {
         attachment_url_type: resolveAttachmentUrlType(r.attachment_url),
         best_passage,
       };
-    });
+    })
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -306,16 +271,15 @@ async function _searchFile(query, k) {
     }
   }
 
-  const idf = buildIDF(rows.map((r) => `${r.headline} ${r.details}`));
-  const queryVecSparse = tfidfEmbed(trimmed, idf);
-
-  return [...byArticleId.values()]
+  const top = [...byArticleId.values()]
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, k)
-    .map((r) => {
+    .slice(0, k);
+
+  return Promise.all(
+    top.map(async (r) => {
       const articleText = articleTexts.get(r.articleId) ?? r.details;
-      const best_passage = selectBestPassage(articleText, queryVecSparse, idf);
+      const best_passage = await selectBestPassage(articleText, queryEmbedding, embedder);
       return {
         id: r.articleId,
         headline: r.headline,
@@ -325,7 +289,8 @@ async function _searchFile(query, k) {
         attachment_url_type: resolveAttachmentUrlType(r.attachment_url),
         best_passage,
       };
-    });
+    })
+  );
 }
 
 // ---------------------------------------------------------------------------

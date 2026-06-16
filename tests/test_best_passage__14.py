@@ -46,7 +46,7 @@ def _run_node(script, timeout=15):
 def _call_search_documents(query, k=10):
     script = f"""
 import {{ searchDocuments }} from './src/core/search.js';
-const results = searchDocuments({json.dumps(query)}, {k});
+const results = await searchDocuments({json.dumps(query)}, {k});
 process.stdout.write(JSON.stringify(results));
 """
     out, err, rc = _run_node(script)
