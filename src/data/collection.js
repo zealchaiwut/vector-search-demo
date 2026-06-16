@@ -1,13 +1,14 @@
 /**
- * Vector collection — backed by Milvus when MILVUS_HOST is set, otherwise
- * backed by collection.json for local development without a live Milvus instance.
- * All exports are async.
+ * Vector collection — backed by Milvus when DATA_BACKEND=milvus (or MILVUS_HOST
+ * is set), otherwise backed by collection.json for local development without a
+ * live Milvus instance. See ./backend.js for the selector. All exports are async.
  */
 
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateArticleId } from "./articleValidation.js";
+import { useMilvus, milvusAddress } from "./backend.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -18,9 +19,7 @@ const EMBEDDING_DIM = 384;
 
 async function getMilvusClient() {
   const { MilvusClient } = await import("@zilliz/milvus2-sdk-node");
-  const host = process.env.MILVUS_HOST;
-  const port = process.env.MILVUS_PORT || "19530";
-  return new MilvusClient({ address: `${host}:${port}` });
+  return new MilvusClient({ address: milvusAddress() });
 }
 
 // ── File-backed helpers ─────────────────────────────────────────────────────
@@ -42,7 +41,7 @@ function filePersist(rows) {
 // ── Exported API ────────────────────────────────────────────────────────────
 
 export async function dropCollection() {
-  if (process.env.MILVUS_HOST) {
+  if (useMilvus()) {
     const client = await getMilvusClient();
     const { value: exists } = await client.hasCollection({
       collection_name: COLLECTION_NAME,
@@ -58,7 +57,7 @@ export async function dropCollection() {
 }
 
 export async function createCollection(recreate = false) {
-  if (process.env.MILVUS_HOST) {
+  if (useMilvus()) {
     const { DataType } = await import("@zilliz/milvus2-sdk-node");
     const client = await getMilvusClient();
 
@@ -104,7 +103,7 @@ export async function createCollection(recreate = false) {
 
 export async function upsertRows(rows) {
   if (!rows || rows.length === 0) return;
-  if (process.env.MILVUS_HOST) {
+  if (useMilvus()) {
     const client = await getMilvusClient();
     await client.upsert({ collection_name: COLLECTION_NAME, data: rows });
     await client.flush({ collection_names: [COLLECTION_NAME] });
@@ -121,7 +120,7 @@ export async function upsertRows(rows) {
 export const insertRows = upsertRows;
 
 export async function entityCount() {
-  if (process.env.MILVUS_HOST) {
+  if (useMilvus()) {
     const client = await getMilvusClient();
     const result = await client.getCollectionStatistics({
       collection_name: COLLECTION_NAME,
@@ -134,7 +133,7 @@ export async function entityCount() {
 }
 
 export async function listArticles() {
-  if (process.env.MILVUS_HOST) {
+  if (useMilvus()) {
     const client = await getMilvusClient();
     const result = await client.query({
       collection_name: COLLECTION_NAME,
@@ -177,7 +176,7 @@ export async function listArticles() {
 export async function getArticle(articleId) {
   const idError = validateArticleId(articleId);
   if (idError) throw new Error(idError);
-  if (process.env.MILVUS_HOST) {
+  if (useMilvus()) {
     const client = await getMilvusClient();
     const result = await client.query({
       collection_name: COLLECTION_NAME,
@@ -210,7 +209,7 @@ export async function getArticle(articleId) {
 export async function deleteArticle(articleId) {
   const idError = validateArticleId(articleId);
   if (idError) throw new Error(idError);
-  if (process.env.MILVUS_HOST) {
+  if (useMilvus()) {
     const client = await getMilvusClient();
     const check = await client.query({
       collection_name: COLLECTION_NAME,
