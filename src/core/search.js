@@ -1,11 +1,14 @@
 /**
  * Core search logic for vector-search-demo.
  *
- * When MILVUS_HOST is set: embeds the query with MiniLM, runs ANN search via
- * Milvus COSINE similarity, collapses chunks to articles, extracts best passage.
+ * Milvus backend (DATA_BACKEND=milvus): embeds the query with MiniLM, runs ANN
+ * search via Milvus COSINE similarity, collapses chunks to articles, extracts
+ * best passage.
  *
- * When MILVUS_HOST is not set: loads rows from collection.json and ranks by
- * cosine similarity (same MiniLM embeddings, local computation).
+ * Mock backend (DATA_BACKEND=mock, the default): loads rows from collection.json
+ * and ranks by cosine similarity (same MiniLM embeddings, local computation).
+ *
+ * See ../data/backend.js for the selector.
  *
  * Search depends on ingest: empty or absent data returns [].
  */
@@ -14,6 +17,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createEmbedder } from "../embeddings/index.js";
+import { useMilvus, milvusAddress } from "../data/backend.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -188,9 +192,7 @@ async function _searchMilvus(query, k) {
   const [queryEmbedding] = await embedder.embed([trimmed]);
 
   const { MilvusClient } = await import("@zilliz/milvus2-sdk-node");
-  const host = process.env.MILVUS_HOST;
-  const port = process.env.MILVUS_PORT || "19530";
-  const client = new MilvusClient({ address: `${host}:${port}` });
+  const client = new MilvusClient({ address: milvusAddress() });
 
   let searchResult;
   try {
@@ -331,7 +333,7 @@ async function _searchFile(query, k) {
 // ---------------------------------------------------------------------------
 
 async function _searchImpl(query, k) {
-  if (process.env.MILVUS_HOST) {
+  if (useMilvus()) {
     return _searchMilvus(query, k);
   }
   return _searchFile(query, k);
