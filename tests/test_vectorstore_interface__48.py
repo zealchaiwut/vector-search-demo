@@ -14,7 +14,6 @@ AC7 - DB_BACKEND=postgres is accepted without error; methods return "not impleme
 """
 
 import os
-import re
 import json
 import subprocess
 
@@ -72,7 +71,7 @@ def test_store_directory_exists():
 
 def test_store_index_exports_getStore():
     """AC1: src/store/index.js must export a getStore function."""
-    assert os.path.isfile(STORE_INDEX_PATH), f"src/store/index.js not found"
+    assert os.path.isfile(STORE_INDEX_PATH), "src/store/index.js not found"
     stdout, stderr, rc = run_node(
         f"""
 import {{ getStore }} from '{STORE_INDEX_PATH}';
