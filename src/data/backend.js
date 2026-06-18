@@ -1,16 +1,17 @@
 /**
  * Data-backend selector.
  *
- * Decides whether the app talks to a live Milvus instance or the file-backed
- * mock collection (collection.json).
+ * DB_BACKEND=postgres  → use Postgres/pgvector (PgVectorStore)
+ * DB_BACKEND=milvus    → use Milvus
+ * DB_BACKEND=mock      → use the file-backed mock (no Milvus needed)
  *
  * DB_BACKEND takes priority; DATA_BACKEND is the legacy alias. When neither is
  * set, the presence of MILVUS_HOST selects Milvus (backward compatibility).
- *
- *   DB_BACKEND=milvus  → use Milvus
- *   DB_BACKEND=mock    → use the file-backed mock (no Milvus needed)
- *   DB_BACKEND=postgres → postgres (not yet wired; factory handles the error)
  */
+
+export function usePostgres() {
+  return (process.env.DB_BACKEND || "").trim().toLowerCase() === "postgres";
+}
 
 export function useMilvus() {
   // DB_BACKEND wins; fall back to DATA_BACKEND for legacy callers.
