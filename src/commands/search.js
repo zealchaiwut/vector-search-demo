@@ -1,3 +1,4 @@
+import { resolveBackend, logActiveBackend } from "../store/factory.js";
 import { searchDocuments } from "../core/search.js";
 
 function parseArgs(argv) {
@@ -28,6 +29,9 @@ export async function runSearch(argv) {
     );
     process.exit(1);
   }
+
+  const backend = resolveBackend();
+  logActiveBackend(backend);
 
   const results = await searchDocuments(query, k);
 

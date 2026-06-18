@@ -41,3 +41,47 @@ Light is the default theme; dark mirrors it via `[data-theme="dark"]`.
 Starter system. The token values above are placeholders chosen to match the
 operator's other projects; run `/impeccable init` then `/impeccable critique`
 on the first real screen to lock the system in.
+
+## Backends
+
+### Overview
+
+All storage and retrieval operations are routed through a VectorStore factory
+(`src/store/factory.js`). The factory reads the `DB_BACKEND` environment
+variable, validates it, and returns the appropriate store implementation. No
+command in `src/commands/` imports a storage module directly — all resolution
+goes through the factory.
+
+### Supported backends
+
+| Backend | Module | Description |
+|---------|--------|-------------|
+| `mock` | `src/store/mock.js` | File-backed store; reads/writes `collection.json`. Default. No external services. |
+| `milvus` | `src/store/milvus.js` | Live Milvus ANN index (HNSW COSINE, dim=384). Requires `MILVUS_HOST`. |
+| `postgres` | `src/store/postgres.js` | Postgres-backed store; not yet wired. Factory recognises the value and fails with a clear "not yet implemented" error. |
+
+### Factory pattern
+
+```
+CLI command
+  └─ resolveBackend()        reads + validates DB_BACKEND
+  └─ logActiveBackend()      prints "[backend] active store: <name>"
+  └─ getStore(backend)       returns { createCollection, dropCollection,
+                                        upsertRows, entityCount, listArticles,
+                                        search, ping }
+        └─ mock.js  |  milvus.js  |  postgres.js
+```
+
+### Switching backends
+
+Set `DB_BACKEND` before running any command:
+
+```sh
+export DB_BACKEND=mock     # default — no Docker needed
+export DB_BACKEND=milvus   # live Milvus instance
+export DB_BACKEND=postgres # Postgres (not yet wired)
+```
+
+If `DB_BACKEND` is set to an unrecognised value the factory throws immediately
+with a message that includes the bad value, so the process exits non-zero before
+any storage operation is attempted.

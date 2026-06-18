@@ -1,16 +1,24 @@
-import { getMilvusClient } from "../milvus/client.js";
+import { resolveBackend, logActiveBackend, getStore } from "../store/factory.js";
 
 export async function runPing() {
-  const client = getMilvusClient();
+  const backend = resolveBackend();
+  logActiveBackend(backend);
+  const store = await getStore(backend);
   try {
-    const version = await client.ping();
-    const address = client.getAddress();
-    process.stdout.write(`Milvus reachable at ${address} (version ${version})\n`);
+    const { address, version } = await store.ping();
+    if (backend === "mock") {
+      process.stdout.write(`Mock store: no live connection required (${address})\n`);
+    } else {
+      process.stdout.write(`${backend} reachable at ${address} (version ${version})\n`);
+    }
     process.exit(0);
   } catch (err) {
     process.stderr.write(
-      `Failed to connect to Milvus: ${err.message}\nIs it running? Try npm run milvus:up\n`
+      `Failed to connect to ${backend}: ${err.message}\n`
     );
+    if (backend === "milvus") {
+      process.stderr.write("Is it running? Try npm run milvus:up\n");
+    }
     process.exit(1);
   }
 }
