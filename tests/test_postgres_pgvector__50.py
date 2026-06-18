@@ -20,7 +20,6 @@ AC10 - docker-compose.yml is valid YAML with both postgres and Milvus services p
 
 import json
 import os
-import re
 import subprocess
 
 import pytest
