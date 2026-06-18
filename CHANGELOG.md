@@ -3,6 +3,12 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 6.1 (2026-06-19)
+
+- #50: Add Postgres + pgvector backend alongside Milvus
+- #51: Add Postgres pgvector backend to VectorStore
+- #52: Route all commands through DB_BACKEND factory with docs and parity test
+
 ## Sprint 5 (2026-06-11)
 
 - #24: Clarify scope path for best_passage implementation (src/search vs src/core)
