@@ -1,19 +1,60 @@
 /**
- * Vector collection — backed by Milvus when DATA_BACKEND=milvus (or MILVUS_HOST
- * is set), otherwise backed by collection.json for local development without a
- * live Milvus instance. See ./backend.js for the selector. All exports are async.
+ * Vector collection — backed by Postgres/pgvector (DB_BACKEND=postgres),
+ * Milvus (DATA_BACKEND=milvus or MILVUS_HOST set), or the file-backed mock
+ * (collection.json) by default. See ./backend.js for the selector.
+ * All exports are async.
  */
 
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateArticleId } from "./articleValidation.js";
-import { useMilvus, milvusAddress } from "./backend.js";
+import { useMilvus, milvusAddress, usePostgres } from "./backend.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
 const COLLECTION_NAME = "documents";
 const EMBEDDING_DIM = 384;
+
+// ── Postgres helpers ─────────────────────────────────────────────────────────
+
+async function getPgStore() {
+  const { getPgStore: _get } = await import("../store/PgVectorStore.js");
+  return _get();
+}
+
+// Average a set of float32 embedding vectors.
+function avgEmbeddings(embeddings) {
+  if (embeddings.length === 0) return [];
+  const dim = embeddings[0].length;
+  const avg = new Array(dim).fill(0);
+  for (const v of embeddings) {
+    for (let i = 0; i < dim; i++) avg[i] += v[i];
+  }
+  for (let i = 0; i < dim; i++) avg[i] /= embeddings.length;
+  return avg;
+}
+
+// Collapse chunk rows (id like "articleId:N") into one row per article.
+function collapseToArticles(rows) {
+  const byArticle = new Map();
+  for (const row of rows) {
+    const articleId = row.id.split(":")[0];
+    if (!byArticle.has(articleId)) {
+      byArticle.set(articleId, { id: articleId, headline: row.headline, attachment_url: row.attachment_url, detailParts: [], embeddings: [] });
+    }
+    const entry = byArticle.get(articleId);
+    entry.detailParts.push(row.details);
+    if (Array.isArray(row.embedding)) entry.embeddings.push(row.embedding);
+  }
+  return [...byArticle.values()].map((entry) => ({
+    id: entry.id,
+    headline: entry.headline,
+    details: entry.detailParts.join(" "),
+    attachment_url: entry.attachment_url,
+    embedding: avgEmbeddings(entry.embeddings),
+  }));
+}
 
 // ── Milvus helpers ──────────────────────────────────────────────────────────
 
@@ -41,6 +82,11 @@ function filePersist(rows) {
 // ── Exported API ────────────────────────────────────────────────────────────
 
 export async function dropCollection() {
+  if (usePostgres()) {
+    const store = await getPgStore();
+    await store._query("DROP TABLE IF EXISTS articles");
+    return;
+  }
   if (useMilvus()) {
     const client = await getMilvusClient();
     const { value: exists } = await client.hasCollection({
@@ -57,6 +103,12 @@ export async function dropCollection() {
 }
 
 export async function createCollection(recreate = false) {
+  if (usePostgres()) {
+    const store = await getPgStore();
+    if (recreate) await store._query("DROP TABLE IF EXISTS articles");
+    await store.migrate();
+    return;
+  }
   if (useMilvus()) {
     const { DataType } = await import("@zilliz/milvus2-sdk-node");
     const client = await getMilvusClient();
@@ -103,6 +155,13 @@ export async function createCollection(recreate = false) {
 
 export async function upsertRows(rows) {
   if (!rows || rows.length === 0) return;
+  if (usePostgres()) {
+    const store = await getPgStore();
+    // Collapse chunks into one row per article for postgres storage.
+    const articles = collapseToArticles(rows);
+    await store.upsert(articles);
+    return;
+  }
   if (useMilvus()) {
     const client = await getMilvusClient();
     await client.upsert({ collection_name: COLLECTION_NAME, data: rows });
@@ -120,6 +179,10 @@ export async function upsertRows(rows) {
 export const insertRows = upsertRows;
 
 export async function entityCount() {
+  if (usePostgres()) {
+    const store = await getPgStore();
+    return store.count();
+  }
   if (useMilvus()) {
     const client = await getMilvusClient();
     const result = await client.getCollectionStatistics({
@@ -133,6 +196,10 @@ export async function entityCount() {
 }
 
 export async function listArticles() {
+  if (usePostgres()) {
+    const store = await getPgStore();
+    return store.list();
+  }
   if (useMilvus()) {
     const client = await getMilvusClient();
     const result = await client.query({
@@ -176,6 +243,10 @@ export async function listArticles() {
 export async function getArticle(articleId) {
   const idError = validateArticleId(articleId);
   if (idError) throw new Error(idError);
+  if (usePostgres()) {
+    const store = await getPgStore();
+    return store.get(articleId);
+  }
   if (useMilvus()) {
     const client = await getMilvusClient();
     const result = await client.query({
@@ -209,6 +280,10 @@ export async function getArticle(articleId) {
 export async function deleteArticle(articleId) {
   const idError = validateArticleId(articleId);
   if (idError) throw new Error(idError);
+  if (usePostgres()) {
+    const store = await getPgStore();
+    return store.delete(articleId);
+  }
   if (useMilvus()) {
     const client = await getMilvusClient();
     const check = await client.query({

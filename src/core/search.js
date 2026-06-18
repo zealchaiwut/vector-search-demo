@@ -17,7 +17,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createEmbedder } from "../embeddings/index.js";
-import { useMilvus, milvusAddress } from "../data/backend.js";
+import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -314,10 +314,45 @@ async function _searchFile(query, k) {
 }
 
 // ---------------------------------------------------------------------------
+// Postgres-backed search path (DB_BACKEND=postgres)
+// ---------------------------------------------------------------------------
+
+async function _searchPostgres(query, k) {
+  const trimmed = (query ?? "").trim();
+  if (!trimmed) return [];
+
+  const embedder = await getEmbedder();
+  const [queryEmbedding] = await embedder.embed([trimmed]);
+
+  const { getPgStore } = await import("../store/PgVectorStore.js");
+  const store = getPgStore();
+  const hits = await store.search(queryEmbedding, k);
+  if (hits.length === 0) return [];
+
+  return Promise.all(
+    hits.map(async (hit) => {
+      const best_passage = await selectBestPassage(hit.details, queryEmbedding, embedder);
+      return {
+        id: hit.id,
+        headline: hit.headline,
+        details: hit.details.replace(/\s+/g, " ").trim().slice(0, 240),
+        score: parseFloat(hit.score.toFixed(4)),
+        attachment_url: hit.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(hit.attachment_url),
+        best_passage,
+      };
+    })
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 async function _searchImpl(query, k) {
+  if (usePostgres()) {
+    return _searchPostgres(query, k);
+  }
   if (useMilvus()) {
     return _searchMilvus(query, k);
   }
