@@ -1,0 +1,10 @@
+{
+  "issue": 52,
+  "failure_class": "uat-env",
+  "summary": "Issue #52: uat-env failure",
+  "detail": "Refusing port 8000 (PRD) in /Users/zeal-server/dev/vector-search-demo/uat/.env",
+  "files_to_inspect": [],
+  "log_tail": [],
+  "run_id": "sprint6-20260618T1622-wmTC",
+  "timestamp": "2026-06-18T17:16:54Z"
+}
