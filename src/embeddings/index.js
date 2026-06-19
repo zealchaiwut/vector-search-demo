@@ -1,6 +1,6 @@
 import { pipeline } from "@xenova/transformers";
 
-const MODEL = process.env.EMBEDDING_MODEL ?? "Xenova/all-MiniLM-L6-v2";
+const MODEL = process.env.EMBEDDING_MODEL ?? "Xenova/multilingual-e5-small";
 export const EMBEDDING_DIM = parseInt(process.env.DIM ?? "384", 10);
 
 let _pipe = null;

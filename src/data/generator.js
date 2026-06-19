@@ -81,6 +81,15 @@ returned with a relevance score and a link to download the original source file.
 This ingest, embed, index, retrieve loop is the backbone of retrieval-augmented
 generation and enterprise document search.`,
   },
+  {
+    id: "article-thai-001",
+    headline: "การค้นหาเชิงความหมายในภาษาไทย",
+    details: `การค้นหาเชิงความหมายในภาษาไทยช่วยให้สามารถค้นหาข้อมูลได้อย่างแม่นยำโดยไม่ต้องพึ่งพาการจับคู่คำสำคัญ
+ระบบแปลงข้อความไทยให้กลายเป็นเวกเตอร์ตัวเลขที่มีมิติสูง และนำไปเปรียบเทียบกับเวกเตอร์ของเอกสารอื่นๆ
+โมเดลการฝังข้อความแบบหลายภาษา เช่น multilingual-e5-small สามารถเข้าใจความหมายของคำในภาษาไทยได้เป็นอย่างดี
+การค้นหาข้ามภาษาทำให้ผู้ใช้สามารถค้นหาด้วยภาษาไทยและพบผลลัพธ์ที่เกี่ยวข้องในภาษาอื่นได้ด้วย
+เทคโนโลยีนี้เป็นพื้นฐานของระบบค้นหาเชิงความหมายสมัยใหม่และระบบการดึงข้อมูลเพิ่มเติมสำหรับโมเดลภาษาขนาดใหญ่`,
+  },
 ];
 
 export function generateDocuments() {

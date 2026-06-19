@@ -143,7 +143,7 @@ async function selectBestPassage(docText, queryEmbedding, embedder) {
     };
   }
 
-  const vectors = await embedder.embed(sentences.map((s) => s.text));
+  const vectors = await embedder.embed(sentences.map((s) => `passage: ${s.text}`));
 
   let bestIdx = 0;
   let bestScore = -Infinity;
@@ -201,7 +201,7 @@ async function _searchMilvus(query, k) {
   if (!trimmed) return [];
 
   const embedder = await getEmbedder();
-  const [queryEmbedding] = await embedder.embed([trimmed]);
+  const [queryEmbedding] = await embedder.embed([`query: ${trimmed}`]);
 
   const { MilvusStore } = await import("../store/milvus-store.js");
   const store = new MilvusStore(milvusAddress());
@@ -247,7 +247,7 @@ async function _searchFile(query, k) {
   if (!trimmed) return [];
 
   const embedder = await getEmbedder();
-  const [queryEmbedding] = await embedder.embed([trimmed]);
+  const [queryEmbedding] = await embedder.embed([`query: ${trimmed}`]);
 
   const scored = rows
     .filter((row) => Array.isArray(row.embedding) && row.embedding.length > 0)
@@ -340,7 +340,7 @@ async function _searchPostgres(query, k) {
   if (!trimmed) return [];
 
   const embedder = await getEmbedder();
-  const [queryEmbedding] = await embedder.embed([trimmed]);
+  const [queryEmbedding] = await embedder.embed([`query: ${trimmed}`]);
 
   const { getPgStore } = await import("../store/PgVectorStore.js");
   const store = getPgStore();
