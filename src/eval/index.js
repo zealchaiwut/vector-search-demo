@@ -46,8 +46,11 @@ const QUERIES = [
 ];
 
 async function searchDocuments(query, k) {
-  const url = `${SEARCH_URL}?q=${encodeURIComponent(query)}&k=${k}`;
-  const response = await fetch(url);
+  const response = await fetch(SEARCH_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q: query, k }),
+  });
   if (!response.ok) {
     throw new Error(`Search API returned HTTP ${response.status}`);
   }
