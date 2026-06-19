@@ -2,8 +2,6 @@
 import os
 import subprocess
 
-import pytest
-
 
 # Resolved from UAT .env at runtime; see tester skill Step 0.
 BASE_URL = os.environ.get("UAT_BASE_URL") or f"http://localhost:{os.environ.get('UAT_PORT', '8010')}"
