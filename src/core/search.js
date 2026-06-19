@@ -230,6 +230,7 @@ async function _searchMilvus(query, k) {
         attachment_url_type: resolveAttachmentUrlType(r.attachment_url),
         best_passage,
         passages,
+        chunks: [{ text: r.details.replace(/\s+/g, " ").trim(), score: parseFloat(r.score.toFixed(4)) }],
       };
     }),
   );
@@ -326,6 +327,10 @@ async function _searchFile(query, k) {
         attachment_url_type: resolveAttachmentUrlType(bestChunk.attachment_url),
         best_passage,
         passages,
+        chunks: chunks.map((c) => ({
+          text: c.details.replace(/\s+/g, " ").trim(),
+          score: parseFloat(c.score.toFixed(4)),
+        })),
       };
     }),
   );
@@ -400,6 +405,10 @@ async function _searchPostgres(query, k) {
         attachment_url_type: resolveAttachmentUrlType(bestChunk.attachment_url),
         best_passage,
         passages,
+        chunks: chunks.map((c) => ({
+          text: (c.details || "").replace(/\s+/g, " ").trim(),
+          score: parseFloat(c.score.toFixed(4)),
+        })),
       };
     }),
   );
