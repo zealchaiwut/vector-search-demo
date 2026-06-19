@@ -8,7 +8,7 @@
  */
 
 import { MilvusStore } from "./milvus-store.js";
-import { MockStore } from "./mock-store.js";
+import { MockStore } from "./MockStore.js";
 import { PostgresStore } from "./postgres-store.js";
 
 function getMilvusAddress() {
