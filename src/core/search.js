@@ -280,14 +280,32 @@ async function _searchPostgres(query, k) {
 
   const { getPgStore } = await import("../store/PgVectorStore.js");
   const store = getPgStore();
-  const hits = await store.search(queryEmbedding, k);
-  if (hits.length === 0) return [];
+  // Fetch more candidates (EF) so chunk-level ANN has enough to collapse to k articles.
+  const candidates = await store.search(queryEmbedding, EF);
+  if (candidates.length === 0) return [];
+
+  // Collapse chunk hits to articles — keep the best-scoring chunk per article.
+  const byArticle = new Map();
+  for (const hit of candidates) {
+    const articleId = hit.article_id ?? hit.id.split(":")[0];
+    if (!byArticle.has(articleId) || hit.score > byArticle.get(articleId).score) {
+      byArticle.set(articleId, { ...hit, _articleId: articleId });
+    }
+  }
+
+  const top = [...byArticle.values()]
+    .filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k);
 
   return Promise.all(
-    hits.map(async (hit) => {
-      const best_passage = await selectBestPassage(hit.details, queryEmbedding, embedder);
+    top.map(async (hit) => {
+      // Get full reconstructed article body for best_passage selection.
+      const article = await store.get(hit._articleId);
+      const fullText = article ? article.details : hit.details;
+      const best_passage = await selectBestPassage(fullText, queryEmbedding, embedder);
       return {
-        id: hit.id,
+        id: hit._articleId,
         headline: hit.headline,
         details: hit.details.replace(/\s+/g, " ").trim().slice(0, 240),
         score: parseFloat(hit.score.toFixed(4)),
