@@ -262,6 +262,25 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // GET /articles/:id — fetch a single article (full stored text). Used by the
+  // full-article modal so imported/PDF/bulk articles (which have no
+  // attachments/<id>.txt download file) can still be viewed in full.
+  if (req.method === "GET" && pathname.startsWith("/articles/")) {
+    const articleId = pathname.slice("/articles/".length);
+    const idError = validateArticleId(articleId);
+    if (idError) {
+      jsonResponse(res, 400, { error: idError });
+      return;
+    }
+    const article = await getArticle(articleId);
+    if (!article) {
+      jsonResponse(res, 404, { error: "Article not found" });
+      return;
+    }
+    jsonResponse(res, 200, article);
+    return;
+  }
+
   // PUT /articles/:id — update an existing article
   if (req.method === "PUT" && pathname.startsWith("/articles/")) {
     const articleId = pathname.slice("/articles/".length);
