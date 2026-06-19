@@ -23,6 +23,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
 
 const EF = 64;
+const MAX_CHUNKS_PER_ARTICLE = 3;
+const MIN_SCORE_THRESHOLD = 0.1;
 
 let _embedder = null;
 async function getEmbedder() {
@@ -167,6 +169,24 @@ async function selectBestPassage(docText, queryEmbedding, embedder) {
 }
 
 // ---------------------------------------------------------------------------
+// Passage deduplication — removes passages whose start_offset is within
+// OFFSET_PROXIMITY characters of a passage already in the output list.
+// ---------------------------------------------------------------------------
+
+const OFFSET_PROXIMITY = 20;
+
+function deduplicatePassages(passages) {
+  const seen = [];
+  return passages.filter((p) => {
+    const isDup = seen.some(
+      (s) => Math.abs(s.start_offset - p.start_offset) < OFFSET_PROXIMITY
+    );
+    if (!isDup) seen.push(p);
+    return !isDup;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Milvus-backed search path (used when DATA_BACKEND=milvus / MILVUS_HOST set)
 // ---------------------------------------------------------------------------
 
@@ -188,6 +208,7 @@ async function _searchMilvus(query, k) {
   return Promise.all(
     top.map(async (r) => {
       const best_passage = await selectBestPassage(r.details, queryEmbedding, embedder);
+      const passages = [{ ...best_passage, score: parseFloat(r.score.toFixed(4)) }];
       return {
         id: r.id,
         headline: r.headline,
@@ -196,6 +217,7 @@ async function _searchMilvus(query, k) {
         attachment_url: r.attachment_url ?? null,
         attachment_url_type: resolveAttachmentUrlType(r.attachment_url),
         best_passage,
+        passages,
       };
     })
   );
@@ -228,13 +250,16 @@ async function _searchFile(query, k) {
 
   const candidates = scored.sort((a, b) => b.score - a.score).slice(0, EF);
 
+  // Group chunks by article_id
   const byArticleId = new Map();
   for (const c of candidates) {
-    if (!byArticleId.has(c.articleId) || c.score > byArticleId.get(c.articleId).score) {
-      byArticleId.set(c.articleId, c);
+    if (!byArticleId.has(c.articleId)) {
+      byArticleId.set(c.articleId, []);
     }
+    byArticleId.get(c.articleId).push(c);
   }
 
+  // Build full article text for backward-compat best_passage computation
   const articleTexts = new Map();
   for (const row of rows) {
     const aid = row.id.split(":")[0];
@@ -245,23 +270,40 @@ async function _searchFile(query, k) {
     }
   }
 
-  const top = [...byArticleId.values()]
-    .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score)
+  const top = [...byArticleId.entries()]
+    .filter(([, chunks]) => chunks[0].score > 0)
+    .map(([articleId, chunks]) => ({
+      articleId,
+      bestChunk: chunks[0],
+      chunks: chunks.slice(0, MAX_CHUNKS_PER_ARTICLE),
+    }))
+    .sort((a, b) => b.bestChunk.score - a.bestChunk.score)
     .slice(0, k);
 
   return Promise.all(
-    top.map(async (r) => {
-      const articleText = articleTexts.get(r.articleId) ?? r.details;
+    top.map(async ({ articleId, bestChunk, chunks }) => {
+      const articleText = articleTexts.get(articleId) ?? bestChunk.details;
+      // best_passage computed from full article text for backward compat
       const best_passage = await selectBestPassage(articleText, queryEmbedding, embedder);
+
+      // passages: one entry per top-scoring chunk
+      const chunkPassages = await Promise.all(
+        chunks.map(async (chunk) => {
+          const p = await selectBestPassage(chunk.details, queryEmbedding, embedder);
+          return { ...p, score: parseFloat(chunk.score.toFixed(4)) };
+        })
+      );
+      const passages = deduplicatePassages(chunkPassages).sort((a, b) => b.score - a.score);
+
       return {
-        id: r.articleId,
-        headline: r.headline,
-        details: r.details.replace(/\s+/g, " ").trim().slice(0, 240),
-        score: parseFloat(r.score.toFixed(4)),
-        attachment_url: r.attachment_url ?? null,
-        attachment_url_type: resolveAttachmentUrlType(r.attachment_url),
+        id: articleId,
+        headline: bestChunk.headline,
+        details: bestChunk.details.replace(/\s+/g, " ").trim().slice(0, 240),
+        score: parseFloat(bestChunk.score.toFixed(4)),
+        attachment_url: bestChunk.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(bestChunk.attachment_url),
         best_passage,
+        passages,
       };
     })
   );
@@ -284,34 +326,48 @@ async function _searchPostgres(query, k) {
   const candidates = await store.search(queryEmbedding, EF);
   if (candidates.length === 0) return [];
 
-  // Collapse chunk hits to articles — keep the best-scoring chunk per article.
+  // Group chunk hits by article_id, keeping top MAX_CHUNKS_PER_ARTICLE above threshold.
   const byArticle = new Map();
   for (const hit of candidates) {
     const articleId = hit.article_id ?? hit.id.split(":")[0];
-    if (!byArticle.has(articleId) || hit.score > byArticle.get(articleId).score) {
-      byArticle.set(articleId, { ...hit, _articleId: articleId });
+    if (hit.score < MIN_SCORE_THRESHOLD) continue;
+    if (!byArticle.has(articleId)) {
+      byArticle.set(articleId, []);
     }
+    byArticle.get(articleId).push({ ...hit, _articleId: articleId });
   }
 
-  const top = [...byArticle.values()]
-    .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score)
+  // Sort each article's chunks by score and cap at MAX_CHUNKS_PER_ARTICLE.
+  const articlesWithChunks = [...byArticle.entries()].map(([articleId, chunks]) => {
+    const sorted = chunks.sort((a, b) => b.score - a.score).slice(0, MAX_CHUNKS_PER_ARTICLE);
+    return { articleId, bestChunk: sorted[0], chunks: sorted };
+  });
+
+  const top = articlesWithChunks
+    .sort((a, b) => b.bestChunk.score - a.bestChunk.score)
     .slice(0, k);
 
   return Promise.all(
-    top.map(async (hit) => {
-      // Get full reconstructed article body for best_passage selection.
-      const article = await store.get(hit._articleId);
-      const fullText = article ? article.details : hit.details;
-      const best_passage = await selectBestPassage(fullText, queryEmbedding, embedder);
+    top.map(async ({ articleId, bestChunk, chunks }) => {
+      // passages: one entry per top-scoring chunk
+      const chunkPassages = await Promise.all(
+        chunks.map(async (chunk) => {
+          const p = await selectBestPassage(chunk.details, queryEmbedding, embedder);
+          return { ...p, score: parseFloat(chunk.score.toFixed(4)) };
+        })
+      );
+      const passages = deduplicatePassages(chunkPassages).sort((a, b) => b.score - a.score);
+      const best_passage = passages[0] ?? null;
+
       return {
-        id: hit._articleId,
-        headline: hit.headline,
-        details: hit.details.replace(/\s+/g, " ").trim().slice(0, 240),
-        score: parseFloat(hit.score.toFixed(4)),
-        attachment_url: hit.attachment_url ?? null,
-        attachment_url_type: resolveAttachmentUrlType(hit.attachment_url),
+        id: articleId,
+        headline: bestChunk.headline,
+        details: bestChunk.details.replace(/\s+/g, " ").trim().slice(0, 240),
+        score: parseFloat(bestChunk.score.toFixed(4)),
+        attachment_url: bestChunk.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(bestChunk.attachment_url),
         best_passage,
+        passages,
       };
     })
   );
