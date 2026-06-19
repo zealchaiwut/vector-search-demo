@@ -45,3 +45,17 @@ Each row is one chunk of an article. Multiple rows share the same `article_id`.
 | Index type | HNSW |
 | Operator class | vector_cosine_ops |
 | Index name | `articles_embedding_hnsw_idx` |
+
+### Full-Text Search Column and Index
+
+Added by `src/store/migrations/003_tsvector.sql`. Powers `GET /search/exact` via `plainto_tsquery` + `ts_rank`.
+
+| Column | Type | Details |
+|--------|------|---------|
+| `ts` | tsvector | Generated column: `to_tsvector('english', headline \|\| ' ' \|\| details)`, stored |
+
+| Parameter | Value |
+|-----------|-------|
+| Index type | GIN |
+| Index name | `articles_ts_gin_idx` |
+| Indexed column | `ts` |
