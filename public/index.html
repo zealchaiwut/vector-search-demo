@@ -585,6 +585,130 @@
   }
   .bulk-error-list li { margin-bottom: 4px; }
 
+  /* Upload PDF section */
+  .upload-pdf-section > p {
+    margin: 0 0 20px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .pdf-dropzone {
+    border: 2px dashed var(--line);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    text-align: center;
+    background: var(--surface);
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+  .pdf-dropzone:hover, .pdf-dropzone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .pdf-dropzone input[type="file"] { display: none; }
+  .pdf-dropzone-label { display: block; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .pdf-dropzone-label strong { color: var(--accent); }
+  .pdf-filename {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    min-height: 16px;
+  }
+  .pdf-actions { margin-top: 14px; }
+  .btn-upload-pdf {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-upload-pdf:hover { filter: brightness(1.07); }
+  .btn-upload-pdf:disabled { opacity: 0.6; cursor: not-allowed; }
+  .pdf-loading {
+    display: none;
+    margin-top: 14px;
+    font-size: 14px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .pdf-loading.visible { display: block; }
+  .pdf-feedback {
+    font-size: 14px;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: none;
+    margin-top: 14px;
+  }
+  .pdf-feedback.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+  .pdf-feedback.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .pdf-result-form {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 24px;
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
+  }
+  .pdf-result-form.visible { display: flex; }
+  .pdf-result-form .field { display: flex; flex-direction: column; gap: 5px; }
+  .pdf-result-form .field label { font-size: 13px; font-weight: 500; color: var(--ink); }
+  .pdf-result-form .field input,
+  .pdf-result-form .field textarea {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: 0;
+  }
+  .pdf-result-form .field textarea { resize: vertical; min-height: 90px; }
+  .pdf-result-form .field input:focus,
+  .pdf-result-form .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .pdf-result-form .field a {
+    font-size: 13px;
+    color: var(--accent);
+    word-break: break-all;
+    text-decoration: underline;
+  }
+  .btn-pdf-confirm {
+    align-self: flex-start;
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-pdf-confirm:hover { filter: brightness(1.07); }
+  .btn-pdf-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
+
   /* Articles list section */
   .article-list { display: flex; flex-direction: column; gap: 10px; }
   .article-row {
@@ -722,6 +846,7 @@
   <nav class="tabs" role="tablist" aria-label="Demo sections">
     <button class="tab" id="tab-search" role="tab" aria-selected="true" aria-controls="panel-search" type="button">Search</button>
     <button class="tab" id="tab-add" role="tab" aria-selected="false" aria-controls="panel-add" type="button">Add Article</button>
+    <button class="tab" id="tab-upload-pdf" role="tab" aria-selected="false" aria-controls="panel-upload-pdf" type="button">Upload PDF</button>
     <button class="tab" id="tab-bulk" role="tab" aria-selected="false" aria-controls="panel-bulk" type="button">Bulk Import</button>
     <button class="tab" id="tab-articles" role="tab" aria-selected="false" aria-controls="panel-articles" type="button">All Articles</button>
   </nav>
@@ -768,6 +893,38 @@
       <button type="submit" id="add-btn">Submit</button>
     </form>
     <div class="add-feedback" id="add-feedback" aria-live="polite"></div>
+  </section>
+
+  <section class="panel upload-pdf-section" id="panel-upload-pdf" role="tabpanel" aria-labelledby="tab-upload-pdf" hidden>
+    <p>Select a Thai-language <strong>PDF</strong> file. The server will extract and map the text into article fields you can review before saving.</p>
+    <div class="pdf-dropzone" id="pdf-dropzone">
+      <label class="pdf-dropzone-label" for="pdf-file">
+        <strong>Choose PDF</strong> or drop it here
+      </label>
+      <input type="file" id="pdf-file" accept=".pdf,application/pdf" aria-label="Select PDF file for upload" />
+      <div class="pdf-filename" id="pdf-filename"></div>
+    </div>
+    <div class="pdf-actions">
+      <button class="btn-upload-pdf" id="pdf-upload-btn" type="button" disabled>Upload &amp; Extract</button>
+    </div>
+    <div class="pdf-loading" id="pdf-loading" aria-live="polite">Extracting text from PDF… this may take a moment.</div>
+    <div class="pdf-feedback" id="pdf-feedback" aria-live="polite"></div>
+    <form class="pdf-result-form" id="pdf-result-form" novalidate>
+      <div class="field">
+        <label for="pdf-headline">Headline</label>
+        <input id="pdf-headline" name="headline" type="text" placeholder="Extracted headline" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="pdf-details">Details</label>
+        <textarea id="pdf-details" name="details" placeholder="Extracted body text"></textarea>
+      </div>
+      <div class="field">
+        <label for="pdf-attachment-url">Attachment URL</label>
+        <input id="pdf-attachment-url" name="attachment_url" type="text" placeholder="/uploads/..." readonly />
+        <a id="pdf-attachment-link" href="#" target="_blank" rel="noopener" style="display:none">Open PDF in new tab ↗</a>
+      </div>
+      <button class="btn-pdf-confirm" id="pdf-confirm-btn" type="submit">Confirm &amp; Create Article</button>
+    </form>
   </section>
 
   <section class="panel bulk-section" id="panel-bulk" role="tabpanel" aria-labelledby="tab-bulk" hidden>
@@ -818,6 +975,7 @@
   const TAB_HASHES = {
     "tab-search": "#search",
     "tab-add": "#add",
+    "tab-upload-pdf": "#upload-pdf",
     "tab-bulk": "#bulk",
     "tab-articles": "#articles",
   };
@@ -1493,6 +1651,145 @@
     }).join("");
     return `<ul class="bulk-error-list">${items}</ul>`;
   }
+
+  // ---------------------------------------------------------------------------
+  // Upload PDF tab
+  // ---------------------------------------------------------------------------
+
+  const pdfDropzone   = document.getElementById("pdf-dropzone");
+  const pdfFileInput  = document.getElementById("pdf-file");
+  const pdfFilename   = document.getElementById("pdf-filename");
+  const pdfUploadBtn  = document.getElementById("pdf-upload-btn");
+  const pdfLoading    = document.getElementById("pdf-loading");
+  const pdfFeedback   = document.getElementById("pdf-feedback");
+  const pdfResultForm = document.getElementById("pdf-result-form");
+  const pdfHeadline   = document.getElementById("pdf-headline");
+  const pdfDetails    = document.getElementById("pdf-details");
+  const pdfAttachUrl  = document.getElementById("pdf-attachment-url");
+  const pdfAttachLink = document.getElementById("pdf-attachment-link");
+  const pdfConfirmBtn = document.getElementById("pdf-confirm-btn");
+
+  let selectedPdfFile = null;
+
+  pdfDropzone.addEventListener("click", () => pdfFileInput.click());
+  pdfDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    pdfDropzone.classList.add("drag-over");
+  });
+  pdfDropzone.addEventListener("dragleave", () => pdfDropzone.classList.remove("drag-over"));
+  pdfDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    pdfDropzone.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file) handlePdfFileSelected(file);
+  });
+
+  pdfFileInput.addEventListener("change", () => {
+    if (pdfFileInput.files[0]) handlePdfFileSelected(pdfFileInput.files[0]);
+  });
+
+  function handlePdfFileSelected(file) {
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (ext !== "pdf") {
+      showPdfFeedback("error", "Please select a PDF file.");
+      pdfUploadBtn.disabled = true;
+      selectedPdfFile = null;
+      pdfFilename.textContent = "";
+      return;
+    }
+    selectedPdfFile = file;
+    pdfFilename.textContent = file.name;
+    pdfFeedback.className = "pdf-feedback";
+    pdfFeedback.textContent = "";
+    pdfResultForm.className = "pdf-result-form";
+    pdfUploadBtn.disabled = false;
+  }
+
+  function showPdfFeedback(type, msg) {
+    pdfFeedback.className = `pdf-feedback ${type}`;
+    pdfFeedback.textContent = msg;
+  }
+
+  pdfUploadBtn.addEventListener("click", async () => {
+    if (!selectedPdfFile) return;
+
+    pdfUploadBtn.disabled = true;
+    pdfLoading.className = "pdf-loading visible";
+    pdfFeedback.className = "pdf-feedback";
+    pdfFeedback.textContent = "";
+    pdfResultForm.className = "pdf-result-form";
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedPdfFile, selectedPdfFile.name);
+
+      const resp = await fetch(`${API_BASE}/api/upload-pdf`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error ?? `Server returned ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      pdfHeadline.value = data.headline ?? "";
+      pdfDetails.value = data.details ?? "";
+      pdfAttachUrl.value = data.attachment_url ?? "";
+
+      if (data.attachment_url) {
+        pdfAttachLink.href = data.attachment_url;
+        pdfAttachLink.style.display = "inline";
+      } else {
+        pdfAttachLink.style.display = "none";
+      }
+
+      pdfResultForm.className = "pdf-result-form visible";
+    } catch (err) {
+      showPdfFeedback("error", `Extraction failed: ${err.message}`);
+    } finally {
+      pdfLoading.className = "pdf-loading";
+      pdfUploadBtn.disabled = false;
+    }
+  });
+
+  pdfResultForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const headline = pdfHeadline.value.trim();
+    const details = pdfDetails.value.trim();
+    const attachment_url = pdfAttachUrl.value.trim();
+
+    if (!headline) { showPdfFeedback("error", "Headline is required."); return; }
+    if (!details)  { showPdfFeedback("error", "Details are required.");  return; }
+
+    pdfConfirmBtn.disabled = true;
+    pdfFeedback.className = "pdf-feedback";
+    pdfFeedback.textContent = "";
+
+    try {
+      const resp = await fetch(`${API_BASE}/articles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ headline, details, attachment_url }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error ?? `Server returned ${resp.status}`);
+      }
+      const data = await resp.json();
+      showPdfFeedback("success", `Article created. ID: ${escapeHtml(data.id)}`);
+      pdfResultForm.className = "pdf-result-form";
+      selectedPdfFile = null;
+      pdfFilename.textContent = "";
+      pdfFileInput.value = "";
+      loadArticles();
+    } catch (err) {
+      showPdfFeedback("error", err.message);
+    } finally {
+      pdfConfirmBtn.disabled = false;
+    }
+  });
 </script>
 </body>
 </html>

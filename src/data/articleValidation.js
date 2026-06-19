@@ -1,4 +1,4 @@
-const URL_PATTERN = /^https?:\/\//;
+const URL_PATTERN = /^(https?:\/\/|\/uploads\/|\/download\/)/;
 const ARTICLE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
@@ -33,8 +33,8 @@ export function validateArticle(headline, details, attachment_url) {
 
   const u = (attachment_url ?? "").trim();
   if (u && !URL_PATTERN.test(u)) {
-    console.warn(`[WARN] validation: attachment_url must be a valid http or https URL (received: ${JSON.stringify(u)})`);
-    errors.push({ field: "attachment_url", message: "attachment_url must be a valid http or https URL" });
+    console.warn(`[WARN] validation: attachment_url must be a valid http/https URL or a server path (/uploads/, /download/) (received: ${JSON.stringify(u)})`);
+    errors.push({ field: "attachment_url", message: "attachment_url must be a valid http or https URL, or a server path starting with /uploads/ or /download/" });
   }
 
   return errors;
