@@ -82,7 +82,7 @@ function filePersist(rows) {
 export async function dropCollection() {
   if (usePostgres()) {
     const store = await getPgStore();
-    await store._query("DROP TABLE IF EXISTS articles");
+    await store.dropTable();
     return;
   }
   if (useMilvus()) {
@@ -98,7 +98,7 @@ export async function dropCollection() {
 export async function createCollection(recreate = false) {
   if (usePostgres()) {
     const store = await getPgStore();
-    if (recreate) await store._query("DROP TABLE IF EXISTS articles");
+    if (recreate) await store.dropTable();
     await store.migrate();
     return;
   }

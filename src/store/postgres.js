@@ -55,7 +55,7 @@ export function getPostgresStore() {
     },
     async dropCollection() {
       const store = await _getImpl();
-      await store._query("DROP TABLE IF EXISTS articles");
+      await store.dropTable();
     },
     async upsertRows(rows) {
       if (!rows || rows.length === 0) return;

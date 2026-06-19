@@ -12,9 +12,10 @@ const MIGRATION_SQL = readFileSync(
 );
 
 export class PgVectorStore {
-  constructor(connectionString) {
+  constructor(connectionString, table = "articles") {
     this._pool = new Pool({ connectionString });
     this._registered = false;
+    this._table = table;
   }
 
   async _register() {
@@ -27,6 +28,10 @@ export class PgVectorStore {
 
   async _query(text, values) {
     return this._pool.query(text, values);
+  }
+
+  async dropTable() {
+    await this._pool.query(`DROP TABLE IF EXISTS ${this._table}`);
   }
 
   async migrate() {
