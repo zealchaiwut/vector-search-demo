@@ -710,6 +710,33 @@
     font-size: 14px;
     padding: 24px 0;
   }
+
+  /* Paste JSON toggle */
+  .add-mode-row { margin-bottom: 14px; }
+  .btn-json-toggle {
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-json-toggle:hover { background: var(--accent-soft); }
+  .btn-json-toggle[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .btn-json-toggle[aria-pressed="true"]:hover { filter: brightness(1.07); }
+  .json-error {
+    font-size: 13px;
+    color: var(--red);
+    padding: 8px 12px;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    margin-top: 6px;
+  }
 </style>
 </head>
 <body>
@@ -752,18 +779,30 @@
   </section>
 
   <section class="panel add-section" id="panel-add" role="tabpanel" aria-labelledby="tab-add" hidden>
+    <div class="add-mode-row">
+      <button type="button" id="json-toggle-btn" class="btn-json-toggle" aria-pressed="false">Paste JSON</button>
+    </div>
+    <div id="json-input-section" hidden>
+      <div class="field">
+        <label for="art-json">JSON Object</label>
+        <textarea id="art-json" rows="6" placeholder='{"headline":"...","details":"...","attachment_url":""}'></textarea>
+      </div>
+      <div id="json-parse-error" class="json-error" hidden role="alert"></div>
+    </div>
     <form class="add-form" id="add-form" novalidate>
-      <div class="field">
-        <label for="art-headline">Headline</label>
-        <input id="art-headline" name="headline" type="text" placeholder="Article headline" autocomplete="off" />
-      </div>
-      <div class="field">
-        <label for="art-details">Details</label>
-        <textarea id="art-details" name="details" placeholder="Article body / details"></textarea>
-      </div>
-      <div class="field">
-        <label for="art-attachment-url">Attachment URL</label>
-        <input id="art-attachment-url" name="attachment_url" type="url" placeholder="https://example.com/file.pdf" autocomplete="off" />
+      <div id="typed-fields-section">
+        <div class="field">
+          <label for="art-headline">Headline</label>
+          <input id="art-headline" name="headline" type="text" placeholder="Article headline" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="art-details">Details</label>
+          <textarea id="art-details" name="details" placeholder="Article body / details"></textarea>
+        </div>
+        <div class="field">
+          <label for="art-attachment-url">Attachment URL</label>
+          <input id="art-attachment-url" name="attachment_url" type="url" placeholder="https://example.com/file.pdf" autocomplete="off" />
+        </div>
       </div>
       <button type="submit" id="add-btn">Submit</button>
     </form>
@@ -1042,31 +1081,93 @@
   });
 
   // ---------------------------------------------------------------------------
-  // Add Article form
+  // Add Article form (typed mode + Paste JSON toggle mode)
   // ---------------------------------------------------------------------------
 
-  const addForm      = document.getElementById("add-form");
-  const addBtn       = document.getElementById("add-btn");
-  const addFeedback  = document.getElementById("add-feedback");
+  const addForm            = document.getElementById("add-form");
+  const addBtn             = document.getElementById("add-btn");
+  const addFeedback        = document.getElementById("add-feedback");
+  const jsonToggleBtn      = document.getElementById("json-toggle-btn");
+  const jsonInputSection   = document.getElementById("json-input-section");
+  const jsonTextarea       = document.getElementById("art-json");
+  const jsonParseError     = document.getElementById("json-parse-error");
+  const typedFieldsSection = document.getElementById("typed-fields-section");
+  let jsonMode = false;
 
   function showAddFeedback(type, msg) {
     addFeedback.className = `add-feedback ${type}`;
     addFeedback.textContent = msg;
   }
 
-  addForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const headline      = addForm.elements["headline"].value.trim();
-    const details       = addForm.elements["details"].value.trim();
-    const attachment_url = addForm.elements["attachment_url"].value.trim();
+  jsonToggleBtn.addEventListener("click", () => {
+    jsonMode = !jsonMode;
+    jsonToggleBtn.setAttribute("aria-pressed", String(jsonMode));
+    jsonToggleBtn.textContent = jsonMode ? "Use Form Fields" : "Paste JSON";
+    jsonInputSection.hidden = !jsonMode;
+    typedFieldsSection.hidden = jsonMode;
+    jsonParseError.hidden = true;
+    addFeedback.className = "add-feedback";
+    addFeedback.textContent = "";
+  });
 
-    if (!headline) {
-      showAddFeedback("error", "Headline is required.");
+  jsonTextarea.addEventListener("input", () => {
+    const val = jsonTextarea.value.trim();
+    if (!val) {
+      jsonParseError.hidden = true;
       return;
     }
-    if (!details) {
-      showAddFeedback("error", "Details are required.");
-      return;
+    try {
+      JSON.parse(val);
+      jsonParseError.hidden = true;
+    } catch {
+      jsonParseError.textContent = "Invalid JSON — please check the syntax.";
+      jsonParseError.hidden = false;
+    }
+  });
+
+  addForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    let headline, details, attachment_url;
+
+    if (jsonMode) {
+      const rawJson = jsonTextarea.value.trim();
+      if (!rawJson) {
+        showAddFeedback("error", "Paste a JSON object before submitting.");
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(rawJson);
+      } catch {
+        jsonParseError.textContent = "Invalid JSON — please fix the syntax before submitting.";
+        jsonParseError.hidden = false;
+        return;
+      }
+      jsonParseError.hidden = true;
+      headline = (parsed.headline ?? "").trim();
+      details = (parsed.details ?? "").trim();
+      attachment_url = (parsed.attachment_url ?? "").trim();
+      if (!headline) {
+        showAddFeedback("error", "headline is required");
+        return;
+      }
+      if (!details) {
+        showAddFeedback("error", "details is required");
+        return;
+      }
+    } else {
+      headline      = addForm.elements["headline"].value.trim();
+      details       = addForm.elements["details"].value.trim();
+      attachment_url = addForm.elements["attachment_url"].value.trim();
+      if (!headline) {
+        showAddFeedback("error", "Headline is required.");
+        return;
+      }
+      if (!details) {
+        showAddFeedback("error", "Details are required.");
+        return;
+      }
     }
 
     addBtn.disabled = true;
@@ -1074,9 +1175,11 @@
     addFeedback.textContent = "";
 
     try {
-      const createOpts = { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ headline, details, attachment_url }) };
-      createOpts.method = "POST";
-      const resp = await fetch(`${API_BASE}/articles`, createOpts);
+      const resp = await fetch(`${API_BASE}/articles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ headline, details, attachment_url }),
+      });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.error ?? `Server returned ${resp.status}`);
@@ -1084,6 +1187,7 @@
       const data = await resp.json();
       showAddFeedback("success", `Article created. ID: ${escapeHtml(data.id)}`);
       addForm.reset();
+      if (jsonMode) jsonTextarea.value = "";
       loadArticles();
     } catch (err) {
       showAddFeedback("error", err.message);

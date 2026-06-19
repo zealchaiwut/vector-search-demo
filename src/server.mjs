@@ -140,7 +140,7 @@ async function handleRequest(req, res) {
     try {
       payload = JSON.parse(body);
     } catch {
-      jsonResponse(res, 400, { error: "Invalid JSON" });
+      jsonResponse(res, 400, { error: "Request body could not be parsed as JSON" });
       return;
     }
     const fieldErrors = validateArticle(payload.headline, payload.details, payload.attachment_url);
