@@ -294,8 +294,11 @@ def test_ac10_server_returns_error_on_non_pdf():
 
 @pytest.fixture
 def client():
-    if not UAT_BASE_URL.startswith("http"):
-        pytest.skip("UAT_BASE_URL not set — skipping live server tests")
+    try:
+        with httpx.Client(timeout=3.0) as probe:
+            probe.get(UAT_BASE_URL + "/")
+    except Exception:
+        pytest.skip(f"Live server not reachable at {UAT_BASE_URL} — skipping live tests")
     with httpx.Client(base_url=UAT_BASE_URL, timeout=120.0) as c:
         yield c
 
