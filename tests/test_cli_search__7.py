@@ -51,11 +51,12 @@ def test_ac1_core_search_file_exports_searchDocuments():
     assert "searchDocuments" in src, "searchDocuments not found in core/search.js"
 
 
-def test_ac1_commands_search_imports_searchDocuments():
-    """src/commands/search.js must reference searchDocuments."""
+def test_ac1_commands_search_uses_store_search():
+    """src/commands/search.js must route search through getStore().search() (issue #58 follow-up)."""
     with open(SEARCH_JS) as f:
         src = f.read()
-    assert "searchDocuments" in src, "commands/search.js must call searchDocuments"
+    assert "getStore" in src, "commands/search.js must call getStore() from factory (issue #58)"
+    assert "store.search(" in src, "commands/search.js must call store.search() on factory store"
 
 
 # ---------------------------------------------------------------------------
