@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { searchDocuments } from "./core/search.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
-import { validateArticle, validateArticleId } from "./data/articleValidation.js";
+import { validateArticle, validateArticleId, getArticleIdError } from "./data/articleValidation.js";
 import { extractPdfText } from "./pdf/index.js";
 import { mapPdfToArticle } from "./pdf/mapper.js";
 import { TesseractOcr } from "./ocr/index.js";
@@ -267,7 +267,7 @@ async function handleRequest(req, res) {
   // attachments/<id>.txt download file) can still be viewed in full.
   if (req.method === "GET" && pathname.startsWith("/articles/")) {
     const articleId = pathname.slice("/articles/".length);
-    const idError = validateArticleId(articleId);
+    const idError = getArticleIdError(articleId);
     if (idError) {
       jsonResponse(res, 400, { error: idError });
       return;
@@ -288,7 +288,7 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Article id is required" });
       return;
     }
-    const idError = validateArticleId(articleId);
+    const idError = getArticleIdError(articleId);
     if (idError) {
       jsonResponse(res, 400, { error: idError });
       return;
@@ -328,7 +328,7 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Article id is required" });
       return;
     }
-    const idError = validateArticleId(articleId);
+    const idError = getArticleIdError(articleId);
     if (idError) {
       jsonResponse(res, 400, { error: idError });
       return;

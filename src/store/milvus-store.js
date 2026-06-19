@@ -5,7 +5,7 @@
  * All other modules reach Milvus exclusively through this class via getStore().
  */
 
-import { validateArticleId } from "../data/articleValidation.js";
+import { getArticleIdError } from "../data/articleValidation.js";
 
 const COLLECTION_NAME = "documents";
 const EMBEDDING_DIM = 384;
@@ -98,7 +98,7 @@ export class MilvusStore {
   }
 
   async delete(articleId) {
-    const idError = validateArticleId(articleId);
+    const idError = getArticleIdError(articleId);
     if (idError) throw new Error(idError);
 
     const client = await this._client();
@@ -209,7 +209,7 @@ export class MilvusStore {
   }
 
   async getArticle(articleId) {
-    const idError = validateArticleId(articleId);
+    const idError = getArticleIdError(articleId);
     if (idError) throw new Error(idError);
 
     const client = await this._client();
