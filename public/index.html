@@ -1097,6 +1097,24 @@
     return boldQueryWords(escapeHtml(text), query);
   }
 
+  function renderPassageBlock(p, articleId, query, isFirst) {
+    const text = p && p.text ? p.text : "";
+    if (!text) return "";
+    const ctx    = p.context || { before: "", after: "" };
+    const before = ctx.before ? `<span class="ctx">${highlightPassage(ctx.before, query)}</span> ` : "";
+    const after  = ctx.after  ? ` <span class="ctx">${highlightPassage(ctx.after, query)}</span>` : "";
+    const label  = isFirst ? "Closest passage" : "Related passage";
+    const viewBtn = isFirst
+      ? `<button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(text)}">View full article ↗</button>`
+      : "";
+    return `
+          <div class="passage">
+            <div class="passage-label">${label}</div>
+            <p class="passage-text">${before}<mark>${highlightPassage(text, query)}</mark>${after}</p>
+            ${viewBtn}
+          </div>`;
+  }
+
   function renderResults(results, query) {
     const top = Math.max(...results.map(r => r.score), 0);
     resultsEl.innerHTML = results.map(r => {
@@ -1105,17 +1123,11 @@
       const details       = r.details ?? "";
       const articleId     = r.id ?? "";
       const attachmentUrl = r.attachment_url ?? null;
-      const bp            = r.best_passage || null;
-      const passageText   = bp && bp.text ? bp.text : "";
-      const ctx           = bp && bp.context ? bp.context : { before: "", after: "" };
-      const before        = ctx.before ? `<span class="ctx">${highlightPassage(ctx.before, query)}</span> ` : "";
-      const after         = ctx.after ? ` <span class="ctx">${highlightPassage(ctx.after, query)}</span>` : "";
-      const passageBlock  = passageText ? `
-          <div class="passage">
-            <div class="passage-label">Closest passage</div>
-            <p class="passage-text">${before}<mark>${highlightPassage(passageText, query)}</mark>${after}</p>
-            <button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(passageText)}">View full article ↗</button>
-          </div>` : "";
+      // Use passages array if present; fall back to best_passage for backward compat
+      const passages      = Array.isArray(r.passages) && r.passages.length > 0
+        ? r.passages
+        : (r.best_passage ? [r.best_passage] : []);
+      const passageBlocks = passages.map((p, i) => renderPassageBlock(p, articleId, query, i === 0)).join("");
       return `
         <article class="card">
           <div class="card-head">
@@ -1125,7 +1137,7 @@
               <div class="label">relevance ${pct}%</div>
             </div>
           </div>
-          <p class="doc-text">${escapeHtml(details)}</p>${passageBlock}
+          <p class="doc-text">${escapeHtml(details)}</p>${passageBlocks}
           <div class="card-foot">
             <span class="docid">${escapeHtml(articleId)}</span>
             ${attachmentUrl ? `<a class="open-link" href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener">Open</a>` : ""}
