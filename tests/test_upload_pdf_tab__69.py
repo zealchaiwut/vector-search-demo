@@ -16,7 +16,6 @@ Acceptance Criteria:
   AC11 - A confirmed article is discoverable via search
   AC12 - Clicking the attachment_url link opens the uploaded PDF in the browser
 """
-import io
 import os
 import re
 import subprocess
