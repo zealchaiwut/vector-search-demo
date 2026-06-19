@@ -20,3 +20,24 @@ Defined in `src/milvus/schema.ts`.
 | Metric | COSINE |
 | M | 16 |
 | efConstruction | 200 |
+
+## Postgres Table: `articles` (pgvector backend)
+
+Defined in `src/store/migrations/001_articles.sql`. Applied automatically by `commander init` when `DB_BACKEND=postgres`.
+
+| Column | Type | Details |
+|--------|------|---------|
+| `id` | text | Primary key (format: `<uuid>:<chunk_index>`) |
+| `headline` | text | Article headline (NOT NULL) |
+| `details` | text | Article body / chunk text (NOT NULL) |
+| `attachment_url` | text | External attachment URL (nullable) |
+| `embedding` | vector(384) | MiniLM embedding vector (pgvector) |
+| `created_at` | timestamptz | Row creation timestamp (default: now()) |
+
+### Vector Index
+
+| Parameter | Value |
+|-----------|-------|
+| Index type | HNSW |
+| Operator class | vector_cosine_ops |
+| Index name | `articles_embedding_hnsw_idx` |
