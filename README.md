@@ -145,14 +145,55 @@ and reports recall@k.
 
 Exit code 0 when recall@k ≥ threshold.
 
+## Backends
+
+All CLI commands route through a shared factory (`src/store/factory.js`) that
+resolves the active VectorStore from the `DB_BACKEND` environment variable.
+Set it once and every command (`init`, `ingest`, `search`, `ping`, `verify`)
+uses the same backend automatically.
+
+| `DB_BACKEND` | Description |
+|--------------|-------------|
+| `mock` | **Default.** File-backed store (`collection.json`). No external services required. Ideal for local development, CI, and offline testing. |
+| `milvus` | Live Milvus instance. Requires `MILVUS_HOST` (or `docker compose up`). Provides HNSW ANN search with COSINE similarity. |
+| `postgres` | Postgres-backed store. Recognised by the factory; full wiring is in progress. |
+
+Each command prints a startup confirmation line so you always know which backend
+is active:
+
+```
+[backend] active store: mock
+```
+
+### Switching backends
+
+```sh
+# Use the file-backed mock (no Docker required):
+export DB_BACKEND=mock
+node dist/cli.js init
+node dist/cli.js ingest
+
+# Use a live Milvus instance:
+export DB_BACKEND=milvus
+export MILVUS_HOST=localhost    # or your Milvus host
+npm run milvus:up               # start docker-compose Milvus
+node dist/cli.js init
+node dist/cli.js ingest
+node dist/cli.js search "your query"
+```
+
+Setting `DB_BACKEND` to an unrecognised value causes every command to exit
+immediately with a clear error message that includes the invalid value.
+
 ## Configuration
 
 Copy `.env.example` to `.env`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `DB_BACKEND` | `mock` | Active VectorStore backend (`mock`, `milvus`, `postgres`). Overrides `DATA_BACKEND`. |
 | `PORT` | `8000` | Server port (override — see Setup note about 7000/8000) |
-| `MILVUS_HOST` | (unset) | Milvus host — when set, all storage and search use Milvus |
+| `MILVUS_HOST` | (unset) | Milvus host — when set alongside `DB_BACKEND=milvus`, routes storage and search to Milvus |
 | `MILVUS_PORT` | `19530` | Milvus gRPC port |
 | `MILVUS_ADDRESS` | `localhost:19530` | Fallback gRPC address for `ping` and the schema helpers when `MILVUS_HOST`/`MILVUS_PORT` are unset |
 | `COLLECTION_NAME` | `documents` | Milvus collection name |
