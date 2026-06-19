@@ -92,7 +92,10 @@ async function serveFile(filePath, res) {
   try {
     const content = await readFile(filePath);
     const mime = MIME[extname(filePath)] ?? "application/octet-stream";
-    res.writeHead(200, { "Content-Type": mime });
+    // no-cache forces the browser to revalidate, so a redeploy of static
+    // assets (index.html + inline JS) is picked up on the next load instead
+    // of serving a stale cached page.
+    res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-cache" });
     res.end(content);
   } catch {
     res.writeHead(404, { "Content-Type": "text/plain" });

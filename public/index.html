@@ -633,11 +633,42 @@
   .pdf-loading {
     display: none;
     margin-top: 14px;
-    font-size: 14px;
-    color: var(--muted);
     font-family: var(--mono);
   }
   .pdf-loading.visible { display: block; }
+  .pdf-progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .pdf-progress-track {
+    height: 8px;
+    background: var(--border, #2a2a2a);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  .pdf-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.2s ease;
+  }
+  /* Indeterminate (server-side extraction) phase: slide a partial bar. */
+  .pdf-progress-track.indeterminate .pdf-progress-bar {
+    width: 40%;
+    position: absolute;
+    left: -40%;
+    transition: none;
+    animation: pdf-indeterminate 1.1s ease-in-out infinite;
+  }
+  @keyframes pdf-indeterminate {
+    0%   { left: -40%; }
+    100% { left: 100%; }
+  }
   .pdf-feedback {
     font-size: 14px;
     border-radius: 8px;
@@ -907,7 +938,15 @@
     <div class="pdf-actions">
       <button class="btn-upload-pdf" id="pdf-upload-btn" type="button" disabled>Upload &amp; Extract</button>
     </div>
-    <div class="pdf-loading" id="pdf-loading" aria-live="polite">Extracting text from PDF… this may take a moment.</div>
+    <div class="pdf-loading" id="pdf-loading" aria-live="polite">
+      <div class="pdf-progress-label">
+        <span id="pdf-progress-phase">Uploading PDF…</span>
+        <span id="pdf-progress-pct">0%</span>
+      </div>
+      <div class="pdf-progress-track" id="pdf-progress-track">
+        <div class="pdf-progress-bar" id="pdf-progress-bar"></div>
+      </div>
+    </div>
     <div class="pdf-feedback" id="pdf-feedback" aria-live="polite"></div>
     <form class="pdf-result-form" id="pdf-result-form" novalidate>
       <div class="field">
@@ -1710,30 +1749,64 @@
     pdfFeedback.textContent = msg;
   }
 
-  pdfUploadBtn.addEventListener("click", async () => {
+  const pdfProgressTrack = document.getElementById("pdf-progress-track");
+  const pdfProgressBar   = document.getElementById("pdf-progress-bar");
+  const pdfProgressPhase = document.getElementById("pdf-progress-phase");
+  const pdfProgressPct   = document.getElementById("pdf-progress-pct");
+
+  // Drive the progress UI. `indeterminate` is used for the server-side
+  // extraction phase, where no byte-level progress is available.
+  function setPdfProgress(phase, pct, indeterminate) {
+    pdfProgressPhase.textContent = phase;
+    if (indeterminate) {
+      pdfProgressTrack.classList.add("indeterminate");
+      pdfProgressPct.textContent = "";
+    } else {
+      pdfProgressTrack.classList.remove("indeterminate");
+      pdfProgressBar.style.width = `${pct}%`;
+      pdfProgressPct.textContent = `${Math.round(pct)}%`;
+    }
+  }
+
+  pdfUploadBtn.addEventListener("click", () => {
     if (!selectedPdfFile) return;
 
     pdfUploadBtn.disabled = true;
-    pdfLoading.className = "pdf-loading visible";
     pdfFeedback.className = "pdf-feedback";
     pdfFeedback.textContent = "";
     pdfResultForm.className = "pdf-result-form";
+    setPdfProgress("Uploading PDF…", 0, false);
+    pdfLoading.className = "pdf-loading visible";
 
-    try {
-      const formData = new FormData();
-      formData.append("file", selectedPdfFile, selectedPdfFile.name);
+    const formData = new FormData();
+    formData.append("file", selectedPdfFile, selectedPdfFile.name);
 
-      const resp = await fetch(`${API_BASE}/api/upload-pdf`, {
-        method: "POST",
-        body: formData,
-      });
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}/api/upload-pdf`);
 
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error ?? `Server returned ${resp.status}`);
+    // Real byte-level progress for the upload phase.
+    xhr.upload.addEventListener("progress", (e) => {
+      if (!e.lengthComputable) return;
+      const pct = (e.loaded / e.total) * 100;
+      if (pct >= 100) setPdfProgress("Extracting text…", 0, true);
+      else setPdfProgress("Uploading PDF…", pct, false);
+    });
+    // Upload finished, server is now extracting (no byte progress available).
+    xhr.upload.addEventListener("load", () => setPdfProgress("Extracting text…", 0, true));
+
+    xhr.addEventListener("load", () => {
+      pdfLoading.className = "pdf-loading";
+      pdfProgressTrack.classList.remove("indeterminate");
+      pdfUploadBtn.disabled = false;
+
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* leave empty */ }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        showPdfFeedback("error", `Extraction failed: ${data.error ?? `Server returned ${xhr.status}`}`);
+        return;
       }
 
-      const data = await resp.json();
       pdfHeadline.value = data.headline ?? "";
       pdfDetails.value = data.details ?? "";
       pdfAttachUrl.value = data.attachment_url ?? "";
@@ -1746,12 +1819,16 @@
       }
 
       pdfResultForm.className = "pdf-result-form visible";
-    } catch (err) {
-      showPdfFeedback("error", `Extraction failed: ${err.message}`);
-    } finally {
+    });
+
+    xhr.addEventListener("error", () => {
       pdfLoading.className = "pdf-loading";
+      pdfProgressTrack.classList.remove("indeterminate");
       pdfUploadBtn.disabled = false;
-    }
+      showPdfFeedback("error", "Extraction failed: network error.");
+    });
+
+    xhr.send(formData);
   });
 
   pdfResultForm.addEventListener("submit", async (e) => {
