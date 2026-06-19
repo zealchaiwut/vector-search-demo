@@ -1,10 +1,6 @@
 """Tests for issue #74: Move @napi-rs/canvas from dependencies to optionalDependencies"""
 import json
-import os
-import subprocess
-import tempfile
 from pathlib import Path
-import pytest
 
 
 REPO_ROOT = Path(__file__).parent.parent
