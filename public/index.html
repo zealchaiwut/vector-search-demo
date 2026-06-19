@@ -1,0 +1,1880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vector Search Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --ink: #1a1d23;
+    --muted: #6b7280;
+    --line: #e6e8ec;
+    --accent: #5b54e8;
+    --accent-soft: #ecebfc;
+    --red: #dc2626;
+    --radius: 12px;
+    --serif: "Fraunces", Georgia, serif;
+    --sans: "Inter", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 52px 24px 96px; }
+
+  header { margin-bottom: 24px; }
+
+  /* Tab navigation */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 28px;
+    overflow-x: auto;
+  }
+  .tab {
+    appearance: none;
+    border: 0;
+    background: none;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    padding: 10px 14px;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] {
+    color: var(--ink);
+    border-bottom-color: var(--accent);
+  }
+  .tab:focus-visible {
+    outline: 3px solid var(--accent-soft);
+    outline-offset: -3px;
+    border-radius: 6px;
+  }
+  .panel { animation: panel-in 0.18s ease-out; }
+  .panel[hidden] { display: none; }
+  @keyframes panel-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 30px;
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+  }
+  header p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .searchbar {
+    display: flex;
+    gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 8px 8px 8px 16px;
+    box-shadow: 0 1px 2px rgba(26, 29, 35, 0.04);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .searchbar:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .searchbar input {
+    flex: 1;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font-family: var(--sans);
+    font-size: 16px;
+    color: var(--ink);
+  }
+  .searchbar button {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 22px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+    height: 40px;
+  }
+  .searchbar button:hover { filter: brightness(1.07); }
+  .searchbar button:focus-visible {
+    outline: 3px solid var(--accent-soft);
+    outline-offset: 2px;
+  }
+
+  .status {
+    margin: 18px 2px 10px;
+    font-size: 13px;
+    color: var(--muted);
+    font-family: var(--mono);
+    min-height: 18px;
+  }
+
+  .results { display: flex; flex-direction: column; gap: 14px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    animation: rise 0.3s ease both;
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 18px;
+    margin-bottom: 12px;
+  }
+  .card-head h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 19px;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .rel { text-align: right; flex-shrink: 0; min-width: 96px; }
+  .rel .bar {
+    height: 4px;
+    width: 96px;
+    background: var(--line);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: 5px;
+  }
+  .rel .bar > span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width 0.55s ease;
+  }
+  .rel .label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .doc-text { font-size: 14.5px; color: #353a44; margin: 0; }
+
+  /* Semantic "closest passage" highlight */
+  .passage {
+    margin: 10px 0 2px;
+    border-left: 3px solid #6366f1;
+    background: #f5f5ff;
+    border-radius: 0 6px 6px 0;
+    padding: 8px 12px;
+  }
+  .passage-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6366f1;
+    margin-bottom: 4px;
+  }
+  .passage-text {
+    color: #2b2f38;
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0;
+  }
+  /* The semantically closest sentence */
+  .passage-text mark {
+    background: #fde68a;
+    color: #1f2430;
+    border-radius: 3px;
+    padding: 1px 2px;
+  }
+  /* Surrounding context sentences (before/after) — dimmed */
+  .passage-text .ctx { color: #8a90a0; }
+  /* Literal query words that happen to appear in the passage */
+  .qw { background: #e0e7ff; border-radius: 3px; padding: 0 2px; font-weight: 600; }
+
+  .view-full {
+    margin-top: 8px;
+    background: none;
+    border: none;
+    padding: 0;
+    color: #6366f1;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .view-full:hover { text-decoration: underline; }
+
+  .search-note {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin: 8px 0 0;
+  }
+
+  /* Full-article modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 18, 28, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 50;
+  }
+  .modal-overlay[hidden] { display: none; }
+  .modal {
+    background: #fff;
+    border-radius: 12px;
+    max-width: 720px;
+    width: 100%;
+    max-height: 85vh;
+    overflow: auto;
+    padding: 24px 28px;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .modal h2 { margin: 0 28px 14px 0; font-size: 19px; }
+  .modal-close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .modal-body {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: #353a44;
+    white-space: pre-wrap;
+  }
+  .modal-body mark {
+    background: #fde68a;
+    color: #1f2430;
+    border-radius: 3px;
+    padding: 1px 3px;
+  }
+
+  .card-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+  }
+  .docid {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .open-link {
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+    border: 1px solid var(--line);
+    padding: 7px 14px;
+    border-radius: 8px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .open-link:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .open-link:focus-visible {
+    outline: 3px solid var(--accent-soft);
+    outline-offset: 2px;
+  }
+
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 44px 20px;
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+    font-size: 14px;
+  }
+
+  .error-state {
+    text-align: center;
+    color: var(--red);
+    padding: 44px 20px;
+    border: 1px dashed #fca5a5;
+    border-radius: var(--radius);
+    font-size: 14px;
+  }
+  .error-state strong { display: block; margin-bottom: 6px; font-size: 15px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card { animation: none; }
+    .rel .bar > span { transition: none; }
+    .panel { animation: none; }
+  }
+  @media (max-width: 520px) {
+    .card-head { flex-direction: column; }
+    .rel { text-align: left; }
+    h1 { font-size: 25px; }
+  }
+
+  /* Add Article form */
+  .add-form { display: flex; flex-direction: column; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .field input,
+  .field textarea {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: 0;
+  }
+  .field textarea { resize: vertical; min-height: 90px; }
+  .field input:focus,
+  .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .add-form button[type="submit"] {
+    align-self: flex-start;
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .add-form button[type="submit"]:hover { filter: brightness(1.07); }
+  .add-form button[type="submit"]:focus-visible {
+    outline: 3px solid var(--accent-soft);
+    outline-offset: 2px;
+  }
+  .add-form button[type="submit"]:disabled { opacity: 0.6; cursor: not-allowed; }
+  .add-feedback {
+    font-size: 14px;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: none;
+  }
+  .add-feedback.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .add-feedback.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+
+  /* Bulk Upload section */
+  .bulk-section > p {
+    margin: 0 0 20px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .bulk-dropzone {
+    border: 2px dashed var(--line);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    text-align: center;
+    background: var(--surface);
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+  .bulk-dropzone:hover,
+  .bulk-dropzone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .bulk-dropzone input[type="file"] {
+    display: none;
+  }
+  .bulk-dropzone-label {
+    display: block;
+    font-size: 14px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .bulk-dropzone-label strong {
+    color: var(--accent);
+  }
+  .bulk-filename {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    min-height: 16px;
+  }
+  .bulk-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .btn-bulk-upload {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-bulk-upload:hover { filter: brightness(1.07); }
+  .btn-bulk-upload:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-bulk-template {
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 20px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-bulk-template:hover { background: rgba(0,0,0,0.04); }
+  /* Articles toolbar + clear/backup buttons */
+  .articles-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .btn-backup, .btn-clear-all {
+    border: 0;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 20px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s, background 0.15s, opacity 0.15s;
+  }
+  .btn-backup {
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+  }
+  .btn-backup:hover { background: rgba(0,0,0,0.04); }
+  .btn-clear-all { background: var(--red); color: #fff; }
+  .btn-clear-all:hover { filter: brightness(1.07); }
+  .btn-backup:disabled, .btn-clear-all:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* Confirmation modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal-overlay[hidden] { display: none; }
+  .modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 420px;
+    width: 100%;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+  }
+  .modal h3 { margin: 0 0 10px; font-size: 19px; }
+  .modal p { margin: 0 0 20px; color: #444; line-height: 1.5; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+  .btn-modal-cancel, .btn-modal-confirm {
+    border: 0;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 18px;
+    height: 38px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s, background 0.15s;
+  }
+  .btn-modal-cancel { background: #e9e9ec; color: #222; }
+  .btn-modal-cancel:hover { background: #dedee2; }
+  .btn-modal-confirm { background: var(--red); color: #fff; }
+  .btn-modal-confirm:hover { filter: brightness(1.07); }
+  .btn-modal-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
+  .bulk-feedback {
+    font-size: 14px;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: none;
+    margin-top: 14px;
+  }
+  .bulk-feedback.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .bulk-feedback.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+  .bulk-feedback.partial {
+    display: block;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    color: #92400e;
+  }
+  .bulk-error-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+    list-style: disc;
+  }
+  .bulk-error-list li { margin-bottom: 4px; }
+
+  /* Upload PDF section */
+  .upload-pdf-section > p {
+    margin: 0 0 20px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .pdf-dropzone {
+    border: 2px dashed var(--line);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    text-align: center;
+    background: var(--surface);
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+  .pdf-dropzone:hover, .pdf-dropzone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .pdf-dropzone input[type="file"] { display: none; }
+  .pdf-dropzone-label { display: block; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .pdf-dropzone-label strong { color: var(--accent); }
+  .pdf-filename {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    min-height: 16px;
+  }
+  .pdf-actions { margin-top: 14px; }
+  .btn-upload-pdf {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-upload-pdf:hover { filter: brightness(1.07); }
+  .btn-upload-pdf:disabled { opacity: 0.6; cursor: not-allowed; }
+  .pdf-loading {
+    display: none;
+    margin-top: 14px;
+    font-family: var(--mono);
+  }
+  .pdf-loading.visible { display: block; }
+  .pdf-progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .pdf-progress-track {
+    height: 8px;
+    background: var(--border, #2a2a2a);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+  }
+  .pdf-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.2s ease;
+  }
+  /* Indeterminate (server-side extraction) phase: slide a partial bar. */
+  .pdf-progress-track.indeterminate .pdf-progress-bar {
+    width: 40%;
+    position: absolute;
+    left: -40%;
+    transition: none;
+    animation: pdf-indeterminate 1.1s ease-in-out infinite;
+  }
+  @keyframes pdf-indeterminate {
+    0%   { left: -40%; }
+    100% { left: 100%; }
+  }
+  .pdf-feedback {
+    font-size: 14px;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: none;
+    margin-top: 14px;
+  }
+  .pdf-feedback.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+  .pdf-feedback.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .pdf-result-form {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 24px;
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
+  }
+  .pdf-result-form.visible { display: flex; }
+  .pdf-result-form .field { display: flex; flex-direction: column; gap: 5px; }
+  .pdf-result-form .field label { font-size: 13px; font-weight: 500; color: var(--ink); }
+  .pdf-result-form .field input,
+  .pdf-result-form .field textarea {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: var(--sans);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: 0;
+  }
+  .pdf-result-form .field textarea { resize: vertical; min-height: 90px; }
+  .pdf-result-form .field input:focus,
+  .pdf-result-form .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .pdf-result-form .field a {
+    font-size: 13px;
+    color: var(--accent);
+    word-break: break-all;
+    text-decoration: underline;
+  }
+  .btn-pdf-confirm {
+    align-self: flex-start;
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 15px;
+    padding: 0 24px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-pdf-confirm:hover { filter: brightness(1.07); }
+  .btn-pdf-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  /* Articles list section */
+  .article-list { display: flex; flex-direction: column; gap: 10px; }
+  .article-row {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+  }
+  .article-row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .article-row-title {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 16px;
+    margin: 0;
+    flex: 1;
+  }
+  .article-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .btn-edit, .btn-delete {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    background: var(--surface);
+  }
+  .btn-edit { color: var(--accent); }
+  .btn-edit:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .btn-delete { color: var(--red); }
+  .btn-delete:hover { background: #fef2f2; border-color: #fca5a5; }
+  .article-row-details {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 6px 0 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Inline edit form inside article row */
+  .edit-form {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+  .edit-form .field { display: flex; flex-direction: column; gap: 4px; }
+  .edit-form .field label { font-size: 12px; font-weight: 500; color: var(--ink); }
+  .edit-form .field input,
+  .edit-form .field textarea {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: 0;
+  }
+  .edit-form .field textarea { resize: vertical; min-height: 70px; }
+  .edit-form .field input:focus,
+  .edit-form .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .edit-form-actions { display: flex; gap: 8px; }
+  .btn-save {
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 14px;
+    padding: 0 18px;
+    height: 36px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn-save:hover { filter: brightness(1.07); }
+  .btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-cancel {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    padding: 0 14px;
+    height: 36px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .edit-status {
+    font-size: 13px;
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: none;
+  }
+  .edit-status.success {
+    display: block;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    color: #15803d;
+  }
+  .edit-status.error {
+    display: block;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: var(--red);
+  }
+  .articles-empty {
+    color: var(--muted);
+    font-size: 14px;
+    padding: 24px 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Vector Search Demo</h1>
+    <p>Semantic similarity search over a small document corpus.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Demo sections">
+    <button class="tab" id="tab-search" role="tab" aria-selected="true" aria-controls="panel-search" type="button">Search</button>
+    <button class="tab" id="tab-add" role="tab" aria-selected="false" aria-controls="panel-add" type="button">Add Article</button>
+    <button class="tab" id="tab-upload-pdf" role="tab" aria-selected="false" aria-controls="panel-upload-pdf" type="button">Upload PDF</button>
+    <button class="tab" id="tab-bulk" role="tab" aria-selected="false" aria-controls="panel-bulk" type="button">Bulk Import</button>
+    <button class="tab" id="tab-articles" role="tab" aria-selected="false" aria-controls="panel-articles" type="button">All Articles</button>
+  </nav>
+
+  <section class="panel" id="panel-search" role="tabpanel" aria-labelledby="tab-search">
+  <div class="searchbar">
+    <input
+      id="q"
+      type="text"
+      placeholder="e.g. how does vector search work?"
+      autocomplete="off"
+      aria-label="Search query"
+    />
+    <button id="go" type="button">Search</button>
+  </div>
+
+  <p class="search-note">Highlights show the closest passage by <strong>meaning</strong> — semantic search, not exact keyword matches.</p>
+  <div class="status" id="status" aria-live="polite"></div>
+  <div class="results" id="results"></div>
+
+  <div class="modal-overlay" id="full-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="full-title">
+      <button type="button" class="modal-close" id="full-close" aria-label="Close">&times;</button>
+      <h2 id="full-title"></h2>
+      <div class="modal-body" id="full-body"></div>
+    </div>
+  </div>
+  </section>
+
+  <section class="panel add-section" id="panel-add" role="tabpanel" aria-labelledby="tab-add" hidden>
+    <form class="add-form" id="add-form" novalidate>
+      <div class="field">
+        <label for="art-headline">Headline</label>
+        <input id="art-headline" name="headline" type="text" placeholder="Article headline" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="art-details">Details</label>
+        <textarea id="art-details" name="details" placeholder="Article body / details"></textarea>
+      </div>
+      <div class="field">
+        <label for="art-attachment-url">Attachment URL</label>
+        <input id="art-attachment-url" name="attachment_url" type="url" placeholder="https://example.com/file.pdf" autocomplete="off" />
+      </div>
+      <button type="submit" id="add-btn">Submit</button>
+    </form>
+    <div class="add-feedback" id="add-feedback" aria-live="polite"></div>
+  </section>
+
+  <section class="panel upload-pdf-section" id="panel-upload-pdf" role="tabpanel" aria-labelledby="tab-upload-pdf" hidden>
+    <p>Select a Thai-language <strong>PDF</strong> file. The server will extract and map the text into article fields you can review before saving.</p>
+    <div class="pdf-dropzone" id="pdf-dropzone">
+      <label class="pdf-dropzone-label" for="pdf-file">
+        <strong>Choose PDF</strong> or drop it here
+      </label>
+      <input type="file" id="pdf-file" accept=".pdf,application/pdf" aria-label="Select PDF file for upload" />
+      <div class="pdf-filename" id="pdf-filename"></div>
+    </div>
+    <div class="pdf-actions">
+      <button class="btn-upload-pdf" id="pdf-upload-btn" type="button" disabled>Upload &amp; Extract</button>
+    </div>
+    <div class="pdf-loading" id="pdf-loading" aria-live="polite">
+      <div class="pdf-progress-label">
+        <span id="pdf-progress-phase">Uploading PDF…</span>
+        <span id="pdf-progress-pct">0%</span>
+      </div>
+      <div class="pdf-progress-track" id="pdf-progress-track">
+        <div class="pdf-progress-bar" id="pdf-progress-bar"></div>
+      </div>
+    </div>
+    <div class="pdf-feedback" id="pdf-feedback" aria-live="polite"></div>
+    <form class="pdf-result-form" id="pdf-result-form" novalidate>
+      <div class="field">
+        <label for="pdf-headline">Headline</label>
+        <input id="pdf-headline" name="headline" type="text" placeholder="Extracted headline" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="pdf-details">Details</label>
+        <textarea id="pdf-details" name="details" placeholder="Extracted body text"></textarea>
+      </div>
+      <div class="field">
+        <label for="pdf-attachment-url">Attachment URL</label>
+        <input id="pdf-attachment-url" name="attachment_url" type="text" placeholder="/uploads/..." readonly />
+        <a id="pdf-attachment-link" href="#" target="_blank" rel="noopener" style="display:none">Open PDF in new tab ↗</a>
+      </div>
+      <button class="btn-pdf-confirm" id="pdf-confirm-btn" type="submit">Confirm &amp; Create Article</button>
+    </form>
+  </section>
+
+  <section class="panel bulk-section" id="panel-bulk" role="tabpanel" aria-labelledby="tab-bulk" hidden>
+    <p>Upload a <strong>.json</strong> or <strong>.csv</strong> file. Each row must have <code>headline</code>, <code>details</code>, and <code>attachment_url</code> fields.</p>
+    <div class="bulk-dropzone" id="bulk-dropzone">
+      <label class="bulk-dropzone-label" for="bulk-file">
+        <strong>Choose file</strong> or drop it here
+      </label>
+      <input type="file" id="bulk-file" accept=".json,.csv" aria-label="Select JSON or CSV file for bulk import" />
+      <div class="bulk-filename" id="bulk-filename"></div>
+    </div>
+    <div class="bulk-actions">
+      <button class="btn-bulk-template" id="bulk-template-btn" type="button">Download template</button>
+      <button class="btn-bulk-upload" id="bulk-upload-btn" type="button" disabled>Upload &amp; Import</button>
+    </div>
+    <div class="bulk-feedback" id="bulk-feedback" aria-live="polite"></div>
+  </section>
+
+  <section class="panel articles-section" id="panel-articles" role="tabpanel" aria-labelledby="tab-articles" hidden>
+    <div class="articles-toolbar">
+      <button class="btn-backup" id="backup-btn" type="button">Back up all articles</button>
+      <button class="btn-clear-all" id="clear-all-btn" type="button">Clear all articles</button>
+    </div>
+    <div class="article-list" id="article-list">
+      <p class="articles-empty">Loading articles…</p>
+    </div>
+  </section>
+</div>
+
+<div class="modal-overlay" id="clear-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clear-modal-title">
+    <h3 id="clear-modal-title">Clear all articles?</h3>
+    <p id="clear-modal-body">This permanently deletes every article. This cannot be undone.</p>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" id="clear-cancel-btn" type="button">Cancel</button>
+      <button class="btn-modal-confirm" id="clear-confirm-btn" type="button">Delete all</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = "";
+
+  // ---------------------------------------------------------------------------
+  // Tab navigation — hash-synced, keyboard-accessible
+  // ---------------------------------------------------------------------------
+
+  const TAB_HASHES = {
+    "tab-search": "#search",
+    "tab-add": "#add",
+    "tab-upload-pdf": "#upload-pdf",
+    "tab-bulk": "#bulk",
+    "tab-articles": "#articles",
+  };
+  const tabEls = Array.from(document.querySelectorAll(".tab"));
+
+  function selectTab(tab, { focus = false, updateHash = true } = {}) {
+    for (const t of tabEls) {
+      const selected = t === tab;
+      t.setAttribute("aria-selected", String(selected));
+      t.tabIndex = selected ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !selected;
+    }
+    if (focus) tab.focus();
+    if (updateHash) history.replaceState(null, "", TAB_HASHES[tab.id]);
+    if (tab.id === "tab-articles") loadArticles();
+  }
+
+  tabEls.forEach((tab) => {
+    tab.addEventListener("click", () => selectTab(tab));
+  });
+
+  document.querySelector(".tabs").addEventListener("keydown", (e) => {
+    const idx = tabEls.indexOf(document.activeElement);
+    if (idx === -1) return;
+    let next = null;
+    if (e.key === "ArrowRight") next = tabEls[(idx + 1) % tabEls.length];
+    else if (e.key === "ArrowLeft") next = tabEls[(idx - 1 + tabEls.length) % tabEls.length];
+    else if (e.key === "Home") next = tabEls[0];
+    else if (e.key === "End") next = tabEls[tabEls.length - 1];
+    if (next) {
+      e.preventDefault();
+      selectTab(next, { focus: true });
+    }
+  });
+
+  const input    = document.getElementById("q");
+  const btn      = document.getElementById("go");
+  const statusEl = document.getElementById("status");
+  const resultsEl = document.getElementById("results");
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function renderEmpty() {
+    resultsEl.innerHTML = `<div class="empty">No matches, try rephrasing.</div>`;
+  }
+
+  function renderError(msg) {
+    resultsEl.innerHTML = `
+      <div class="error-state">
+        <strong>Unable to reach the search service</strong>
+        ${escapeHtml(msg)}
+      </div>`;
+  }
+
+  // Stopwords kept out of the literal-word bolding so common query glue
+  // ("how", "does", "the") doesn't get highlighted in the passage.
+  const STOPWORDS = new Set(["the","and","for","does","how","what","with","this","that","are","was","you","your","from","into","can","will","why","when","where","which"]);
+
+  // Light-bold any literal query words within an ALREADY-ESCAPED html string.
+  // The passage itself is the semantic highlight; this is a secondary cue for
+  // exact overlaps. Operating on escaped text keeps it safe to call after other
+  // markup (e.g. <mark>) has been inserted via sentinels.
+  function boldQueryWords(escapedHtml, query) {
+    const tokens = (String(query || "").toLowerCase().match(/[a-z0-9]{3,}/g) || [])
+      .filter(t => !STOPWORDS.has(t));
+    if (tokens.length === 0) return escapedHtml;
+    const uniq = [...new Set(tokens)]
+      .sort((a, b) => b.length - a.length)
+      .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const re = new RegExp(`\\b(${uniq.join("|")})\\b`, "gi");
+    return escapedHtml.replace(re, '<strong class="qw">$&</strong>');
+  }
+
+  // Escape a raw passage and light-bold the query words inside it.
+  function highlightPassage(text, query) {
+    return boldQueryWords(escapeHtml(text), query);
+  }
+
+  function renderResults(results, query) {
+    const top = Math.max(...results.map(r => r.score), 0);
+    resultsEl.innerHTML = results.map(r => {
+      const pct = top > 0 ? Math.round(r.score * 100 / top) : 0;
+      const headline      = r.headline ?? "(untitled)";
+      const details       = r.details ?? "";
+      const articleId     = r.id ?? "";
+      const attachmentUrl = r.attachment_url ?? null;
+      const bp            = r.best_passage || null;
+      const passageText   = bp && bp.text ? bp.text : "";
+      const ctx           = bp && bp.context ? bp.context : { before: "", after: "" };
+      const before        = ctx.before ? `<span class="ctx">${highlightPassage(ctx.before, query)}</span> ` : "";
+      const after         = ctx.after ? ` <span class="ctx">${highlightPassage(ctx.after, query)}</span>` : "";
+      const passageBlock  = passageText ? `
+          <div class="passage">
+            <div class="passage-label">Closest passage</div>
+            <p class="passage-text">${before}<mark>${highlightPassage(passageText, query)}</mark>${after}</p>
+            <button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(passageText)}">View full article ↗</button>
+          </div>` : "";
+      return `
+        <article class="card">
+          <div class="card-head">
+            <h2>${escapeHtml(headline)}</h2>
+            <div class="rel">
+              <div class="bar"><span data-pct="${pct}"></span></div>
+              <div class="label">relevance ${pct}%</div>
+            </div>
+          </div>
+          <p class="doc-text">${escapeHtml(details)}</p>${passageBlock}
+          <div class="card-foot">
+            <span class="docid">${escapeHtml(articleId)}</span>
+            ${attachmentUrl ? `<a class="open-link" href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener">Open</a>` : ""}
+          </div>
+        </article>`;
+    }).join("");
+
+    requestAnimationFrame(() => {
+      document.querySelectorAll(".rel .bar > span").forEach(el => {
+        el.style.width = (el.dataset.pct || 0) + "%";
+      });
+    });
+  }
+
+  async function doSearch(query) {
+    lastQuery = query;
+    btn.disabled = true;
+    statusEl.textContent = "Searching…";
+    resultsEl.innerHTML = "";
+
+    try {
+      const resp = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+      if (!resp.ok) throw new Error(`Server returned ${resp.status} ${resp.statusText}`);
+      const data = await resp.json();
+      const results = Array.isArray(data.results) ? data.results : [];
+      statusEl.textContent = results.length ? `${results.length} result${results.length === 1 ? "" : "s"}` : "";
+      if (results.length === 0) {
+        renderEmpty();
+      } else {
+        renderResults(results, query);
+      }
+    } catch (err) {
+      statusEl.textContent = "";
+      renderError(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener("click", () => {
+    const query = input.value.trim();
+    if (query) doSearch(query);
+  });
+
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+      const query = input.value.trim();
+      if (query) doSearch(query);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Full-article modal with best-passage highlight
+  // ---------------------------------------------------------------------------
+
+  let lastQuery = "";
+  const fullModal = document.getElementById("full-modal");
+  const fullBody  = document.getElementById("full-body");
+  const fullTitle = document.getElementById("full-title");
+
+  // Wrap the best passage in <mark> and light-bold query words, on the full
+  // article text. Sentinels (/) mark the passage span before word
+  // bolding so the inserted <mark> tag is never matched by the bolding regex.
+  function renderFullWithHighlight(text, passageText, query) {
+    let html = escapeHtml(text);
+    const needle = escapeHtml(passageText || "");
+    if (needle) {
+      const idx = html.indexOf(needle);
+      if (idx !== -1) {
+        html = html.slice(0, idx) + "" + needle + "" + html.slice(idx + needle.length);
+      }
+    }
+    html = boldQueryWords(html, query);
+    return html.split("").join("<mark>").split("").join("</mark>");
+  }
+
+  async function openFull(id, passageText) {
+    fullTitle.textContent = id;
+    fullBody.textContent = "Loading…";
+    fullModal.hidden = false;
+    try {
+      // Prefer the clean seeded download file; imported/PDF/bulk articles have
+      // none, so fall back to the article's stored details (GET /articles/:id).
+      let text;
+      const dl = await fetch(`${API_BASE}/download/${encodeURIComponent(id)}`);
+      if (dl.ok) {
+        text = await dl.text();
+      } else {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(id)}`);
+        if (!resp.ok) throw new Error("unavailable");
+        text = (await resp.json()).details ?? "";
+      }
+      fullBody.innerHTML = renderFullWithHighlight(text, passageText, lastQuery);
+      const mark = fullBody.querySelector("mark");
+      if (mark) mark.scrollIntoView({ block: "center" });
+    } catch {
+      fullBody.innerHTML = '<p class="search-note">Full article text is unavailable for this item.</p>';
+    }
+  }
+
+  function closeFull() {
+    fullModal.hidden = true;
+    fullBody.innerHTML = "";
+  }
+
+  // Delegate "View full article" clicks from result cards.
+  resultsEl.addEventListener("click", (e) => {
+    const btnEl = e.target.closest(".view-full");
+    if (!btnEl) return;
+    openFull(btnEl.dataset.id, btnEl.dataset.passage || "");
+  });
+
+  document.getElementById("full-close").addEventListener("click", closeFull);
+  fullModal.addEventListener("click", (e) => {
+    if (e.target === fullModal) closeFull();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !fullModal.hidden) closeFull();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Add Article form
+  // ---------------------------------------------------------------------------
+
+  const addForm      = document.getElementById("add-form");
+  const addBtn       = document.getElementById("add-btn");
+  const addFeedback  = document.getElementById("add-feedback");
+
+  function showAddFeedback(type, msg) {
+    addFeedback.className = `add-feedback ${type}`;
+    addFeedback.textContent = msg;
+  }
+
+  addForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const headline      = addForm.elements["headline"].value.trim();
+    const details       = addForm.elements["details"].value.trim();
+    const attachment_url = addForm.elements["attachment_url"].value.trim();
+
+    if (!headline) {
+      showAddFeedback("error", "Headline is required.");
+      return;
+    }
+    if (!details) {
+      showAddFeedback("error", "Details are required.");
+      return;
+    }
+
+    addBtn.disabled = true;
+    addFeedback.className = "add-feedback";
+    addFeedback.textContent = "";
+
+    try {
+      const createOpts = { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ headline, details, attachment_url }) };
+      createOpts.method = "POST";
+      const resp = await fetch(`${API_BASE}/articles`, createOpts);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error ?? `Server returned ${resp.status}`);
+      }
+      const data = await resp.json();
+      showAddFeedback("success", `Article created. ID: ${escapeHtml(data.id)}`);
+      addForm.reset();
+      loadArticles();
+    } catch (err) {
+      showAddFeedback("error", err.message);
+    } finally {
+      addBtn.disabled = false;
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Articles list — load, edit, delete
+  // ---------------------------------------------------------------------------
+
+  const articleListEl = document.getElementById("article-list");
+
+  function buildEditForm(article, rowEl) {
+    const form = document.createElement("div");
+    form.className = "edit-form";
+    form.innerHTML = `
+      <div class="field">
+        <label>Headline</label>
+        <input class="ef-headline" type="text" value="${escapeHtml(article.headline)}" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>Details</label>
+        <textarea class="ef-details">${escapeHtml(article.details)}</textarea>
+      </div>
+      <div class="field">
+        <label>Attachment URL</label>
+        <input class="ef-url" type="url" value="${escapeHtml(article.attachment_url || "")}" autocomplete="off" />
+      </div>
+      <div class="edit-form-actions">
+        <button class="btn-save" type="button">Save</button>
+        <button class="btn-cancel" type="button">Cancel</button>
+      </div>
+      <div class="edit-status" aria-live="polite"></div>
+    `;
+
+    const saveBtn = form.querySelector(".btn-save");
+    const cancelBtn = form.querySelector(".btn-cancel");
+    const statusEl = form.querySelector(".edit-status");
+
+    cancelBtn.addEventListener("click", () => form.remove());
+
+    saveBtn.addEventListener("click", async () => {
+      const headline = form.querySelector(".ef-headline").value.trim();
+      const details = form.querySelector(".ef-details").value.trim();
+      const attachment_url = form.querySelector(".ef-url").value.trim();
+      if (!headline || !details) {
+        statusEl.className = "edit-status error";
+        statusEl.textContent = "Headline and details are required.";
+        return;
+      }
+      saveBtn.disabled = true;
+      statusEl.className = "edit-status";
+      statusEl.textContent = "";
+      try {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(article.id)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ headline, details, attachment_url }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error ?? `Server returned ${resp.status}`);
+        }
+        // Update the DOM without a full page reload
+        rowEl.querySelector(".article-row-title").textContent = headline;
+        rowEl.querySelector(".article-row-details").textContent = details;
+        rowEl.dataset.headline = headline;
+        rowEl.dataset.details = details;
+        rowEl.dataset.attachmentUrl = attachment_url;
+        form.remove();
+      } catch (err) {
+        statusEl.className = "edit-status error";
+        statusEl.textContent = err.message;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    return form;
+  }
+
+  function renderArticleRow(article) {
+    const row = document.createElement("div");
+    row.className = "article-row";
+    row.dataset.id = article.id;
+    row.dataset.headline = article.headline;
+    row.dataset.details = article.details;
+    row.dataset.attachmentUrl = article.attachment_url || "";
+
+    row.innerHTML = `
+      <div class="article-row-head">
+        <p class="article-row-title">${escapeHtml(article.headline)}</p>
+        <div class="article-row-actions">
+          <button class="btn-edit" type="button" aria-label="Edit article">Edit</button>
+          <button class="btn-delete" type="button" aria-label="Delete article">Delete</button>
+        </div>
+      </div>
+      <p class="article-row-details">${escapeHtml(article.details)}</p>
+    `;
+
+    row.querySelector(".btn-edit").addEventListener("click", () => {
+      const existing = row.querySelector(".edit-form");
+      if (existing) { existing.remove(); return; }
+      const currentArticle = {
+        id: row.dataset.id,
+        headline: row.dataset.headline,
+        details: row.dataset.details,
+        attachment_url: row.dataset.attachmentUrl,
+      };
+      row.appendChild(buildEditForm(currentArticle, row));
+    });
+
+    row.querySelector(".btn-delete").addEventListener("click", async () => {
+      if (!confirm(`Delete article "${article.headline}"? This cannot be undone.`)) return;
+      try {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(article.id)}`, {
+          method: "DELETE",
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error ?? `Server returned ${resp.status}`);
+        }
+        row.remove();
+        if (articleListEl.children.length === 0) {
+          articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Create one in the Add Article tab.</p>`;
+        }
+      } catch (err) {
+        alert(`Delete failed: ${err.message}`);
+      }
+    });
+
+    return row;
+  }
+
+  async function loadArticles() {
+    try {
+      const resp = await fetch(`${API_BASE}/articles`);
+      if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+      const data = await resp.json();
+      const articles = Array.isArray(data.articles) ? data.articles : [];
+      articleListEl.innerHTML = "";
+      if (articles.length === 0) {
+        articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Create one in the Add Article tab.</p>`;
+        return;
+      }
+      for (const article of articles) {
+        articleListEl.appendChild(renderArticleRow(article));
+      }
+    } catch (err) {
+      articleListEl.innerHTML = `<p class="articles-empty" style="color:var(--red)">Failed to load articles: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Articles toolbar — back up (download JSON) + clear all (confirm modal)
+  // ---------------------------------------------------------------------------
+
+  const backupBtn       = document.getElementById("backup-btn");
+  const clearAllBtn     = document.getElementById("clear-all-btn");
+  const clearModal      = document.getElementById("clear-modal");
+  const clearCancelBtn  = document.getElementById("clear-cancel-btn");
+  const clearConfirmBtn = document.getElementById("clear-confirm-btn");
+  const clearModalBody  = document.getElementById("clear-modal-body");
+
+  async function fetchAllArticles() {
+    const resp = await fetch(`${API_BASE}/articles`);
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    const data = await resp.json();
+    return Array.isArray(data.articles) ? data.articles : [];
+  }
+
+  // Back up: download all articles as a JSON file (re-importable via Bulk Import).
+  backupBtn.addEventListener("click", async () => {
+    backupBtn.disabled = true;
+    try {
+      const articles = await fetchAllArticles();
+      if (articles.length === 0) {
+        alert("No articles to back up.");
+        return;
+      }
+      const rows = articles.map(a => ({
+        headline: a.headline ?? "",
+        details: a.details ?? "",
+        attachment_url: a.attachment_url ?? "",
+      }));
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.download = `articles-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Backup failed: ${err.message}`);
+    } finally {
+      backupBtn.disabled = false;
+    }
+  });
+
+  function closeClearModal() { clearModal.hidden = true; }
+
+  clearAllBtn.addEventListener("click", () => {
+    clearModalBody.textContent = "This permanently deletes every article. This cannot be undone.";
+    clearConfirmBtn.disabled = false;
+    clearConfirmBtn.textContent = "Delete all";
+    clearModal.hidden = false;
+  });
+  clearCancelBtn.addEventListener("click", closeClearModal);
+  clearModal.addEventListener("click", (e) => { if (e.target === clearModal) closeClearModal(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !clearModal.hidden) closeClearModal();
+  });
+
+  clearConfirmBtn.addEventListener("click", async () => {
+    clearConfirmBtn.disabled = true;
+    clearConfirmBtn.textContent = "Deleting…";
+    try {
+      const articles = await fetchAllArticles();
+      let failed = 0;
+      for (const article of articles) {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(article.id)}`, {
+          method: "DELETE",
+        });
+        if (!resp.ok) failed++;
+      }
+      closeClearModal();
+      loadArticles();
+      if (failed > 0) alert(`${failed} article${failed === 1 ? "" : "s"} could not be deleted.`);
+    } catch (err) {
+      closeClearModal();
+      alert(`Clear failed: ${err.message}`);
+    }
+  });
+
+  // Restore the tab from the URL hash (e.g. /#articles); default is Search.
+  // Also establishes the roving tabindex on the tab buttons.
+  const initialTab = tabEls.find((t) => TAB_HASHES[t.id] === location.hash);
+  selectTab(initialTab ?? tabEls[0], { updateHash: false });
+
+  // ---------------------------------------------------------------------------
+  // Bulk Import
+  // ---------------------------------------------------------------------------
+
+  const bulkDropzone  = document.getElementById("bulk-dropzone");
+  const bulkFileInput = document.getElementById("bulk-file");
+  const bulkFilename  = document.getElementById("bulk-filename");
+  const bulkUploadBtn = document.getElementById("bulk-upload-btn");
+  const bulkTemplateBtn = document.getElementById("bulk-template-btn");
+  const bulkFeedback  = document.getElementById("bulk-feedback");
+
+  let selectedBulkFile = null;
+
+  // Download a ready-to-edit bulk-import template (matches the /articles/bulk schema).
+  bulkTemplateBtn.addEventListener("click", () => {
+    const template = [
+      {
+        headline: "Coastal cities trial tidal energy turbines",
+        details: "Three coastal municipalities began a pilot of submerged tidal turbines this week, aiming to cover a fifth of local grid demand from predictable ocean currents within two years.",
+        attachment_url: "https://example.com/articles/tidal-energy-pilot.pdf"
+      },
+      {
+        headline: "Open-source model speeds up protein folding",
+        details: "Researchers released an open-source model that predicts protein structures in minutes on commodity hardware, lowering the barrier for small labs to run structural biology experiments.",
+        attachment_url: "https://example.com/articles/protein-folding-model.pdf"
+      },
+      {
+        headline: "City launches free transit on high-pollution days",
+        details: "A metro authority will waive all bus and rail fares automatically whenever air-quality readings cross an unhealthy threshold, hoping to cut car trips during smog episodes. attachment_url is optional and may be left blank.",
+        attachment_url: ""
+      }
+    ];
+    const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "bulk-articles-template.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  bulkDropzone.addEventListener("click", () => bulkFileInput.click());
+
+  bulkDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    bulkDropzone.classList.add("drag-over");
+  });
+  bulkDropzone.addEventListener("dragleave", () => bulkDropzone.classList.remove("drag-over"));
+  bulkDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    bulkDropzone.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file) handleBulkFileSelected(file);
+  });
+
+  bulkFileInput.addEventListener("change", () => {
+    if (bulkFileInput.files[0]) handleBulkFileSelected(bulkFileInput.files[0]);
+  });
+
+  function handleBulkFileSelected(file) {
+    const name = file.name;
+    const ext = name.split(".").pop().toLowerCase();
+    if (ext !== "json" && ext !== "csv") {
+      bulkFeedback.className = "bulk-feedback error";
+      bulkFeedback.innerHTML = `Unsupported file format <strong>${escapeHtml(name)}</strong>. Please upload a <strong>.json</strong> or <strong>.csv</strong> file.`;
+      bulkUploadBtn.disabled = true;
+      selectedBulkFile = null;
+      bulkFilename.textContent = "";
+      return;
+    }
+    selectedBulkFile = file;
+    bulkFilename.textContent = name;
+    bulkFeedback.className = "bulk-feedback";
+    bulkFeedback.textContent = "";
+    bulkUploadBtn.disabled = false;
+  }
+
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 1) return [];
+    const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+    return lines.slice(1).map(line => {
+      const values = line.match(/("(?:[^"]|"")*"|[^,]*)/g)
+        .map(v => v.trim().replace(/^"|"$/g, "").replace(/""/g, '"'));
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = values[i] ?? ""; });
+      return obj;
+    });
+  }
+
+  bulkUploadBtn.addEventListener("click", async () => {
+    if (!selectedBulkFile) return;
+
+    bulkUploadBtn.disabled = true;
+    bulkFeedback.className = "bulk-feedback";
+    bulkFeedback.textContent = "";
+
+    try {
+      const text = await selectedBulkFile.text();
+      const ext = selectedBulkFile.name.split(".").pop().toLowerCase();
+      let rows;
+
+      if (ext === "json") {
+        try {
+          const parsed = JSON.parse(text);
+          rows = Array.isArray(parsed) ? parsed : parsed.rows ?? [];
+        } catch {
+          throw new Error("Invalid JSON file — could not parse.");
+        }
+      } else {
+        rows = parseCsv(text);
+      }
+
+      if (rows.length === 0) {
+        bulkFeedback.className = "bulk-feedback error";
+        bulkFeedback.textContent = "0 rows found in the file. Nothing to import.";
+        bulkUploadBtn.disabled = false;
+        return;
+      }
+
+      const resp = await fetch(`${API_BASE}/articles/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error ?? `Server returned ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      const { total, succeeded, failed, errors } = data;
+
+      if (failed === 0) {
+        bulkFeedback.className = "bulk-feedback success";
+        bulkFeedback.innerHTML = `<strong>${succeeded} / ${total} succeeded, 0 failed.</strong> All articles imported successfully.`;
+      } else if (succeeded === 0) {
+        bulkFeedback.className = "bulk-feedback error";
+        bulkFeedback.innerHTML = `<strong>0 / ${total} succeeded, ${failed} failed.</strong> No articles were imported.${renderBulkErrors(errors)}`;
+      } else {
+        bulkFeedback.className = "bulk-feedback partial";
+        bulkFeedback.innerHTML = `<strong>${succeeded} / ${total} succeeded, ${failed} failed.</strong>${renderBulkErrors(errors)}`;
+      }
+
+      if (succeeded > 0) loadArticles();
+    } catch (err) {
+      bulkFeedback.className = "bulk-feedback error";
+      bulkFeedback.textContent = err.message;
+    } finally {
+      bulkUploadBtn.disabled = false;
+    }
+  });
+
+  function renderBulkErrors(errors) {
+    if (!errors || errors.length === 0) return "";
+    const items = errors.map(e => {
+      const rowLabel = e.row !== undefined ? `Row ${e.row + 1}` : "Row";
+      const reason = e.reason || e.error || e.message || "unknown error";
+      return `<li>${escapeHtml(rowLabel)}: ${escapeHtml(reason)}</li>`;
+    }).join("");
+    return `<ul class="bulk-error-list">${items}</ul>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upload PDF tab
+  // ---------------------------------------------------------------------------
+
+  const pdfDropzone   = document.getElementById("pdf-dropzone");
+  const pdfFileInput  = document.getElementById("pdf-file");
+  const pdfFilename   = document.getElementById("pdf-filename");
+  const pdfUploadBtn  = document.getElementById("pdf-upload-btn");
+  const pdfLoading    = document.getElementById("pdf-loading");
+  const pdfFeedback   = document.getElementById("pdf-feedback");
+  const pdfResultForm = document.getElementById("pdf-result-form");
+  const pdfHeadline   = document.getElementById("pdf-headline");
+  const pdfDetails    = document.getElementById("pdf-details");
+  const pdfAttachUrl  = document.getElementById("pdf-attachment-url");
+  const pdfAttachLink = document.getElementById("pdf-attachment-link");
+  const pdfConfirmBtn = document.getElementById("pdf-confirm-btn");
+
+  let selectedPdfFile = null;
+
+  pdfDropzone.addEventListener("click", () => pdfFileInput.click());
+  pdfDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    pdfDropzone.classList.add("drag-over");
+  });
+  pdfDropzone.addEventListener("dragleave", () => pdfDropzone.classList.remove("drag-over"));
+  pdfDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    pdfDropzone.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file) handlePdfFileSelected(file);
+  });
+
+  pdfFileInput.addEventListener("change", () => {
+    if (pdfFileInput.files[0]) handlePdfFileSelected(pdfFileInput.files[0]);
+  });
+
+  function handlePdfFileSelected(file) {
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (ext !== "pdf") {
+      showPdfFeedback("error", "Please select a PDF file.");
+      pdfUploadBtn.disabled = true;
+      selectedPdfFile = null;
+      pdfFilename.textContent = "";
+      return;
+    }
+    selectedPdfFile = file;
+    pdfFilename.textContent = file.name;
+    pdfFeedback.className = "pdf-feedback";
+    pdfFeedback.textContent = "";
+    pdfResultForm.className = "pdf-result-form";
+    pdfUploadBtn.disabled = false;
+  }
+
+  function showPdfFeedback(type, msg) {
+    pdfFeedback.className = `pdf-feedback ${type}`;
+    pdfFeedback.textContent = msg;
+  }
+
+  const pdfProgressTrack = document.getElementById("pdf-progress-track");
+  const pdfProgressBar   = document.getElementById("pdf-progress-bar");
+  const pdfProgressPhase = document.getElementById("pdf-progress-phase");
+  const pdfProgressPct   = document.getElementById("pdf-progress-pct");
+
+  // Drive the progress UI. `indeterminate` is used for the server-side
+  // extraction phase, where no byte-level progress is available.
+  function setPdfProgress(phase, pct, indeterminate) {
+    pdfProgressPhase.textContent = phase;
+    if (indeterminate) {
+      pdfProgressTrack.classList.add("indeterminate");
+      pdfProgressPct.textContent = "";
+    } else {
+      pdfProgressTrack.classList.remove("indeterminate");
+      pdfProgressBar.style.width = `${pct}%`;
+      pdfProgressPct.textContent = `${Math.round(pct)}%`;
+    }
+  }
+
+  pdfUploadBtn.addEventListener("click", () => {
+    if (!selectedPdfFile) return;
+
+    pdfUploadBtn.disabled = true;
+    pdfFeedback.className = "pdf-feedback";
+    pdfFeedback.textContent = "";
+    pdfResultForm.className = "pdf-result-form";
+    setPdfProgress("Uploading PDF…", 0, false);
+    pdfLoading.className = "pdf-loading visible";
+
+    const formData = new FormData();
+    formData.append("file", selectedPdfFile, selectedPdfFile.name);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}/api/upload-pdf`);
+
+    // Real byte-level progress for the upload phase.
+    xhr.upload.addEventListener("progress", (e) => {
+      if (!e.lengthComputable) return;
+      const pct = (e.loaded / e.total) * 100;
+      if (pct >= 100) setPdfProgress("Extracting text…", 0, true);
+      else setPdfProgress("Uploading PDF…", pct, false);
+    });
+    // Upload finished, server is now extracting (no byte progress available).
+    xhr.upload.addEventListener("load", () => setPdfProgress("Extracting text…", 0, true));
+
+    xhr.addEventListener("load", () => {
+      pdfLoading.className = "pdf-loading";
+      pdfProgressTrack.classList.remove("indeterminate");
+      pdfUploadBtn.disabled = false;
+
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* leave empty */ }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        showPdfFeedback("error", `Extraction failed: ${data.error ?? `Server returned ${xhr.status}`}`);
+        return;
+      }
+
+      pdfHeadline.value = data.headline ?? "";
+      pdfDetails.value = data.details ?? "";
+      pdfAttachUrl.value = data.attachment_url ?? "";
+
+      if (data.attachment_url) {
+        pdfAttachLink.href = data.attachment_url;
+        pdfAttachLink.style.display = "inline";
+      } else {
+        pdfAttachLink.style.display = "none";
+      }
+
+      pdfResultForm.className = "pdf-result-form visible";
+    });
+
+    xhr.addEventListener("error", () => {
+      pdfLoading.className = "pdf-loading";
+      pdfProgressTrack.classList.remove("indeterminate");
+      pdfUploadBtn.disabled = false;
+      showPdfFeedback("error", "Extraction failed: network error.");
+    });
+
+    xhr.send(formData);
+  });
+
+  pdfResultForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const headline = pdfHeadline.value.trim();
+    const details = pdfDetails.value.trim();
+    const attachment_url = pdfAttachUrl.value.trim();
+
+    if (!headline) { showPdfFeedback("error", "Headline is required."); return; }
+    if (!details)  { showPdfFeedback("error", "Details are required.");  return; }
+
+    pdfConfirmBtn.disabled = true;
+    pdfFeedback.className = "pdf-feedback";
+    pdfFeedback.textContent = "";
+
+    try {
+      const resp = await fetch(`${API_BASE}/articles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ headline, details, attachment_url }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error ?? `Server returned ${resp.status}`);
+      }
+      const data = await resp.json();
+      showPdfFeedback("success", `Article created. ID: ${escapeHtml(data.id)}`);
+      pdfResultForm.className = "pdf-result-form";
+      selectedPdfFile = null;
+      pdfFilename.textContent = "";
+      pdfFileInput.value = "";
+      loadArticles();
+    } catch (err) {
+      showPdfFeedback("error", err.message);
+    } finally {
+      pdfConfirmBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
