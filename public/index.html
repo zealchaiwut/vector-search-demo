@@ -1207,9 +1207,17 @@
     fullBody.textContent = "Loading…";
     fullModal.hidden = false;
     try {
-      const resp = await fetch(`${API_BASE}/download/${encodeURIComponent(id)}`);
-      if (!resp.ok) throw new Error("unavailable");
-      const text = await resp.text();
+      // Prefer the clean seeded download file; imported/PDF/bulk articles have
+      // none, so fall back to the article's stored details (GET /articles/:id).
+      let text;
+      const dl = await fetch(`${API_BASE}/download/${encodeURIComponent(id)}`);
+      if (dl.ok) {
+        text = await dl.text();
+      } else {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(id)}`);
+        if (!resp.ok) throw new Error("unavailable");
+        text = (await resp.json()).details ?? "";
+      }
       fullBody.innerHTML = renderFullWithHighlight(text, passageText, lastQuery);
       const mark = fullBody.querySelector("mark");
       if (mark) mark.scrollIntoView({ block: "center" });
