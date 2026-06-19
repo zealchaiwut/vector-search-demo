@@ -1198,12 +1198,13 @@
     const before = ctx.before ? `<span class="ctx">${highlightPassage(ctx.before, query)}</span> ` : "";
     const after  = ctx.after  ? ` <span class="ctx">${highlightPassage(ctx.after, query)}</span>` : "";
     const label  = isFirst ? "Closest passage" : "Related passage";
+    const score  = typeof p.score === "number" ? ` · ${Math.round(p.score * 100)}%` : "";
     const viewBtn = isFirst
       ? `<button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(text)}">View full article ↗</button>`
       : "";
     return `
           <div class="passage">
-            <div class="passage-label">${label}</div>
+            <div class="passage-label">${label}${score}</div>
             <p class="passage-text">${before}<mark>${highlightPassage(text, query)}</mark>${after}</p>
             ${viewBtn}
           </div>`;
