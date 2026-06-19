@@ -271,7 +271,7 @@ async function _searchFile(query, k) {
   }
 
   const top = [...byArticleId.entries()]
-    .filter(([, chunks]) => chunks[0].score > 0)
+    .filter(([, chunks]) => chunks[0].score >= MIN_SCORE_THRESHOLD)
     .map(([articleId, chunks]) => ({
       articleId,
       bestChunk: chunks[0],
