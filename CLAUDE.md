@@ -21,14 +21,15 @@ and `~/dev/commander/prd/docs/workflow.md`.
 
 **Filing work — bulk create (preferred for multi-ticket batches):**
 
-1. Write a prompts file in `~/dev/commander/prd/docs/bulk-create/` named
-   `YYYY-MM-DD-<slug>.md`. Format (see existing files there for examples):
-   header block (`Date`, `Sprint label`, `Default labels`, `Status: drafted`),
-   a context paragraph, then a `## Prompts` section containing one fenced code
-   block with the prompts separated by `---`. Each prompt is a self-contained
-   feature/fix description ending with explicit acceptance criteria. Finish
-   with `## Notes` (dependencies, prerequisites) and an empty
-   `## Posted issues` table.
+1. Write a prompts file in **this repo's** `docs/bulk-create/` directory (NOT
+   the commander repo) named `YYYY-MM-DD-<slug>.md`. See
+   `docs/bulk-create/README.md` for the canonical format and existing files for
+   examples: header block (`Date`, `Sprint label`, `Default labels`,
+   `Status: drafted`), a context paragraph, then a `## Prompts` section
+   containing one fenced code block with the prompts separated by `---`. Each
+   prompt is a self-contained feature/fix description ending with explicit
+   acceptance criteria. Finish with `## Notes` (dependencies, prerequisites) and
+   an empty `## Posted issues` table.
 2. The human pastes the code block into the dashboard's **Bulk Create** tab —
    a BA agent drafts each ticket, an estimator sizes it, and selected tickets
    are posted as GitHub issues with the sprint label.
