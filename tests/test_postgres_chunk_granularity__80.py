@@ -501,7 +501,7 @@ def test_ac14_integrity_no_false_mismatch_live(client):
     assert r_health.status_code == 200
     data = r_health.json()
     # Must not be a false mismatch purely because of multi-chunk storage
-    assert data.get("status") != "mismatch" or data.get("chunkCount") != data.get("articleCount") == False, (
+    assert data.get("status") != "mismatch", (
         "/health/integrity must not raise mismatch when chunkCount > articleCount (expected with multi-chunk)"
     )
     assert "chunkCount" in data, "Response must include chunkCount"
