@@ -3,6 +3,13 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 10 (2026-06-20)
+
+- #97: Switch embedder to multilingual-e5-small for Thai support
+- #98: Chunk documents into overlapping character-window segments before indexing
+- #99: Group multi-chunk search results by parent document (adds `chunks` field)
+- #100: Show multiple matching passages per result card with per-passage scores
+
 ## Sprint 8 (2026-06-19)
 
 - #41: Clarify articleId validation return semantics via getArticleIdError alias
