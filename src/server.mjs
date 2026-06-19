@@ -4,12 +4,14 @@
  * Endpoints:
  *   GET /search?q=<query>    — returns ranked result cards
  *   GET /download/:articleId — returns the source article as a file download
+ *   POST /api/upload-pdf     — upload PDF, extract text, return article JSON
+ *   GET /uploads/:filename   — serve uploaded PDF files
  *   GET /                    — serves public/index.html
  *   GET /static/*            — serves files from public/
  */
 
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,12 +20,54 @@ import { searchDocuments } from "./core/search.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
 import { validateArticle, validateArticleId } from "./data/articleValidation.js";
+import { extractPdfText } from "./pdf/index.js";
+import { mapPdfToArticle } from "./pdf/mapper.js";
+import { TesseractOcr } from "./ocr/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
 const PUBLIC_DIR = join(REPO_ROOT, "public");
 const ATTACHMENTS_DIR = join(REPO_ROOT, "attachments");
+const UPLOADS_DIR = join(REPO_ROOT, "uploads");
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
+
+await mkdir(UPLOADS_DIR, { recursive: true });
+
+// ---------------------------------------------------------------------------
+// Multipart form-data parser — extracts the first file part
+// ---------------------------------------------------------------------------
+
+function parseMultipartFile(body, boundary) {
+  const crlf = Buffer.from("\r\n");
+  const delimiter = Buffer.from(`\r\n--${boundary}`);
+  const firstLine = Buffer.from(`--${boundary}\r\n`);
+
+  let pos = body.indexOf(firstLine);
+  if (pos === -1) return null;
+  pos += firstLine.length;
+
+  while (pos < body.length) {
+    const headerEnd = body.indexOf(Buffer.from("\r\n\r\n"), pos);
+    if (headerEnd === -1) break;
+    const headers = body.slice(pos, headerEnd).toString("utf-8");
+    pos = headerEnd + 4;
+
+    const nextDelim = body.indexOf(delimiter, pos);
+    const partData = nextDelim !== -1 ? body.slice(pos, nextDelim) : body.slice(pos);
+
+    const cdMatch = headers.match(/content-disposition:\s*form-data[^;]*(?:;\s*name="([^"]*)")?(?:;\s*filename="([^"]*)")?/i);
+    if (cdMatch && cdMatch[2]) {
+      return { filename: cdMatch[2], data: partData };
+    }
+
+    if (nextDelim === -1) break;
+    pos = nextDelim + delimiter.length;
+    if (body[pos] === 45 && body[pos + 1] === 45) break; // trailing --
+    if (body[pos] === 13 && body[pos + 1] === 10) pos += 2;
+  }
+
+  return null;
+}
 
 async function search(query, k = 10) {
   return searchDocuments(query, k);
@@ -82,6 +126,56 @@ async function handleRequest(req, res) {
       "Access-Control-Allow-Headers": "Content-Type",
     });
     res.end();
+    return;
+  }
+
+  // POST /api/upload-pdf — receive PDF, extract text, return article JSON
+  if (req.method === "POST" && pathname === "/api/upload-pdf") {
+    const contentType = req.headers["content-type"] ?? "";
+    const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
+    if (!boundaryMatch) {
+      jsonResponse(res, 400, { error: "Expected multipart/form-data with a boundary" });
+      return;
+    }
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const rawBody = Buffer.concat(chunks);
+    const file = parseMultipartFile(rawBody, boundaryMatch[1]);
+    if (!file) {
+      jsonResponse(res, 400, { error: "No PDF file found in request" });
+      return;
+    }
+    const safeName = file.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const uniqueName = `${randomUUID()}-${safeName}`;
+    const filePath = join(UPLOADS_DIR, uniqueName);
+    await writeFile(filePath, file.data);
+    try {
+      const ocr = new TesseractOcr();
+      const text = await extractPdfText(file.data, ocr);
+      const attachment_url = `/uploads/${encodeURIComponent(uniqueName)}`;
+      const article = mapPdfToArticle(text, { fileName: safeName, attachmentUrl: attachment_url });
+      jsonResponse(res, 200, article);
+    } catch (err) {
+      jsonResponse(res, 422, { error: `Extraction failed: ${err.message ?? String(err)}` });
+    }
+    return;
+  }
+
+  // GET /uploads/:filename — serve stored PDF uploads
+  if (req.method === "GET" && pathname.startsWith("/uploads/")) {
+    const filename = decodeURIComponent(pathname.slice("/uploads/".length));
+    const filePath = join(UPLOADS_DIR, filename);
+    if (!filePath.startsWith(UPLOADS_DIR) || !existsSync(filePath)) {
+      jsonResponse(res, 404, { error: "Upload not found" });
+      return;
+    }
+    const content = await readFile(filePath);
+    res.writeHead(200, {
+      "Content-Type": "application/pdf",
+      "Content-Length": content.length,
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(content);
     return;
   }
 
