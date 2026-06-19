@@ -34,7 +34,14 @@ async function getEmbedder() {
 // Attachment URL type discriminator
 // ---------------------------------------------------------------------------
 
-/** @returns {"external" | "local" | null} */
+/**
+ * Determines the attachment URL type for a given URL string.
+ * Returns "local" for paths served under /download/, "external" for http(s)
+ * URLs, and null when no URL is provided.
+ *
+ * @param {string|null|undefined} url - The attachment URL to classify.
+ * @returns {"external" | "local" | null}
+ */
 function resolveAttachmentUrlType(url) {
   if (!url) return null;
   if (url.startsWith("/download/")) return "local";
