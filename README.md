@@ -96,6 +96,8 @@ node dist/cli.js verify               # check vector/article count integrity
 | `PUT` | `/articles/:id` | Update an existing article (validated) |
 | `DELETE` | `/articles/:id` | Delete an article |
 | `POST` | `/articles/bulk` | Bulk-create articles; atomically rejected if any item fails validation |
+| `POST` | `/api/upload-pdf` | Upload a PDF (multipart/form-data); extract text (with Thai OCR fallback) and return pre-populated article JSON (`headline`, `details`, `attachment_url`) |
+| `GET` | `/uploads/:filename` | Serve a stored PDF that was uploaded via `/api/upload-pdf` |
 
 Search result shape (`GET /search`):
 
@@ -119,7 +121,9 @@ Search result shape (`GET /search`):
 }
 ```
 
-`attachment_url` is `null` when absent, or a URL string otherwise. `attachment_url_type` is `"local"` for `/download/`-prefixed paths or `"external"` for `http(s)://` URLs (also `null` when `attachment_url` is absent). Results where `attachment_url` is null do not render a link in the UI. `best_passage` is the highest-scoring sentence from the article (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full article text.
+`attachment_url` is `null` when absent, or a URL/path string otherwise. Accepted forms: `http(s)://` external URLs, `/download/`-prefixed paths (built-in ingested articles), and `/uploads/`-prefixed paths (PDFs uploaded via the Upload PDF tab). `attachment_url_type` is `"local"` for `/download/`-prefixed paths or `"external"` for `http(s)://` URLs (also `null` when `attachment_url` is absent). Results where `attachment_url` is null do not render a link in the UI. `best_passage` is the highest-scoring sentence from the article (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full article text.
+
+`POST /articles` accepts either `application/x-www-form-urlencoded` (existing form) or `Content-Type: application/json` with a body of `{ "headline": "...", "details": "...", "attachment_url": "..." }`. Malformed JSON returns HTTP 400; missing required fields return HTTP 422.
 
 `/download/:articleId` validates the `articleId` path parameter — only alphanumeric characters, `-`, and `_` are accepted. Invalid IDs return HTTP 400 "Invalid article ID" before any storage lookup. When the article is not found the response is HTTP 404 "Attachment not found".
 
@@ -214,5 +218,9 @@ src/core/search.js   embeds query with MiniLM, queries Milvus (HNSW COSINE ANN)
                      or falls back to linear cosine scan over collection.json
 src/milvus/client.js   singleton MilvusClient wrapper (dynamic SDK import)
 src/milvus/schema.ts   Milvus collection schema: HNSW index, COSINE metric, dim=384
-src/server.mjs       HTTP: /health, /search, /download, /articles CRUD
+src/server.mjs       HTTP: /health, /search, /download, /articles CRUD,
+                          /api/upload-pdf (PDF→article JSON), /uploads/ (static PDFs)
+src/pdf/index.js     PDF text extraction (embedded text layer → OCR fallback)
+src/pdf/mapper.js    Map extracted text to add-article JSON shape
+src/ocr/index.js     Ocr interface + TesseractOcr (Thai language, sharp preprocessing)
 ```
