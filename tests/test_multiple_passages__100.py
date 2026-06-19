@@ -1,6 +1,5 @@
 """Tests for issue #100: Show multiple matching passages per result card (runs against UAT)"""
 import os
-import json
 import pytest
 import httpx
 
