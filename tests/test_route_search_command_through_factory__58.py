@@ -151,9 +151,12 @@ def test_search_js_factory_pattern_complete():
     with open(search_js_path, "r") as f:
         content = f.read()
 
-    # Check that factory imports are present
-    assert 'import { resolveBackend, logActiveBackend, getStore }' in content, (
-        "search.js should import resolveBackend, logActiveBackend, and getStore"
+    # Check that factory imports are present (flexible to formatting)
+    assert "resolveBackend" in content and "logActiveBackend" in content and "getStore" in content, (
+        "search.js should import resolveBackend, logActiveBackend, and getStore from factory"
+    )
+    assert 'from "../store/factory.js"' in content, (
+        "factory functions should be imported from ../store/factory.js"
     )
 
     # Verify the exact pattern: getStore followed by store.search
