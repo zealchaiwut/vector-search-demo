@@ -410,6 +410,23 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // GET /search/exact?q=<query>&k=<limit>
+  // Keyword search via Postgres FTS (ts_rank + plainto_tsquery).
+  // Returns [] when no document matches or when DB_BACKEND is not postgres.
+  if (req.method === "GET" && pathname === "/search/exact") {
+    const q = url.searchParams.get("q") ?? "";
+    const k = parseInt(url.searchParams.get("k") ?? "10", 10);
+    try {
+      const { searchExact } = await import("./core/searchExact.js");
+      const results = await searchExact(q, Number.isFinite(k) ? k : 10);
+      jsonResponse(res, 200, { results });
+    } catch (err) {
+      console.error("[server] Exact search failed:", err?.message ?? err);
+      jsonResponse(res, 200, { results: [] });
+    }
+    return;
+  }
+
   // GET /download/:articleId
   if (req.method === "GET" && pathname.startsWith("/download/")) {
     const articleId = pathname.slice("/download/".length);

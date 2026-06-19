@@ -865,6 +865,73 @@
     font-size: 14px;
     padding: 24px 0;
   }
+
+  /* Compare view */
+  .compare-section { }
+  .compare-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+  }
+  .compare-col-header {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--line);
+  }
+  .compare-col-header.semantic { border-bottom-color: var(--accent); color: var(--accent); }
+  .compare-col-header.keyword  { border-bottom-color: #16a34a; color: #16a34a; }
+  .compare-results { display: flex; flex-direction: column; gap: 10px; }
+  .cmp-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    animation: rise 0.3s ease both;
+  }
+  .cmp-card-title {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 15px;
+    margin: 0 0 5px;
+    letter-spacing: -0.01em;
+  }
+  .cmp-card-details {
+    font-size: 13px;
+    color: #353a44;
+    margin: 0 0 6px;
+    line-height: 1.5;
+  }
+  .cmp-card-snippet {
+    font-size: 12.5px;
+    background: #f0fdf4;
+    border-left: 3px solid #16a34a;
+    border-radius: 0 6px 6px 0;
+    padding: 6px 10px;
+    margin: 6px 0 0;
+    color: #166534;
+    line-height: 1.5;
+  }
+  .cmp-card-snippet strong.qw {
+    background: #bbf7d0;
+    border-radius: 3px;
+    padding: 0 2px;
+    font-weight: 600;
+  }
+  .cmp-card-score {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  @media (max-width: 540px) {
+    .compare-columns { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -876,6 +943,7 @@
 
   <nav class="tabs" role="tablist" aria-label="Demo sections">
     <button class="tab" id="tab-search" role="tab" aria-selected="true" aria-controls="panel-search" type="button">Search</button>
+    <button class="tab" id="tab-compare" role="tab" aria-selected="false" aria-controls="panel-compare" type="button">Compare</button>
     <button class="tab" id="tab-add" role="tab" aria-selected="false" aria-controls="panel-add" type="button">Add Article</button>
     <button class="tab" id="tab-upload-pdf" role="tab" aria-selected="false" aria-controls="panel-upload-pdf" type="button">Upload PDF</button>
     <button class="tab" id="tab-bulk" role="tab" aria-selected="false" aria-controls="panel-bulk" type="button">Bulk Import</button>
@@ -905,6 +973,31 @@
       <div class="modal-body" id="full-body"></div>
     </div>
   </div>
+  </section>
+
+  <section class="panel compare-section" id="panel-compare" role="tabpanel" aria-labelledby="tab-compare" hidden>
+    <div class="searchbar" id="compare-searchbar">
+      <input
+        id="cq"
+        type="text"
+        placeholder="e.g. quarterly revenue"
+        autocomplete="off"
+        aria-label="Compare search query"
+      />
+      <button id="cgo" type="button">Compare</button>
+    </div>
+    <p class="search-note">Left: <strong>Semantic</strong> results (meaning). Right: <strong>Keyword</strong> results (exact terms via Postgres FTS).</p>
+    <div class="status" id="compare-status" aria-live="polite"></div>
+    <div class="compare-columns" id="compare-columns" hidden>
+      <div class="compare-col">
+        <div class="compare-col-header semantic">Semantic</div>
+        <div class="compare-results" id="compare-semantic"></div>
+      </div>
+      <div class="compare-col">
+        <div class="compare-col-header keyword">Keyword</div>
+        <div class="compare-results" id="compare-keyword"></div>
+      </div>
+    </div>
   </section>
 
   <section class="panel add-section" id="panel-add" role="tabpanel" aria-labelledby="tab-add" hidden>
@@ -1013,6 +1106,7 @@
 
   const TAB_HASHES = {
     "tab-search": "#search",
+    "tab-compare": "#compare",
     "tab-add": "#add",
     "tab-upload-pdf": "#upload-pdf",
     "tab-bulk": "#bulk",
@@ -1544,6 +1638,111 @@
   // Also establishes the roving tabindex on the tab buttons.
   const initialTab = tabEls.find((t) => TAB_HASHES[t.id] === location.hash);
   selectTab(initialTab ?? tabEls[0], { updateHash: false });
+
+  // ---------------------------------------------------------------------------
+  // Compare tab — fires /search and /search/exact in parallel, side by side
+  // ---------------------------------------------------------------------------
+
+  const compareInput      = document.getElementById("cq");
+  const compareBtn        = document.getElementById("cgo");
+  const compareStatusEl   = document.getElementById("compare-status");
+  const compareSemanticEl = document.getElementById("compare-semantic");
+  const compareKeywordEl  = document.getElementById("compare-keyword");
+  const compareColumns    = document.getElementById("compare-columns");
+
+  function renderCmpCard(r, isKeyword, query) {
+    const headline = r.headline ?? "(untitled)";
+    const details  = (r.details ?? "").slice(0, 200);
+    const score    = typeof r.score === "number" ? r.score.toFixed(4) : "";
+
+    if (isKeyword) {
+      const snippetRaw = typeof r.best_passage === "string"
+        ? r.best_passage
+        : (r.best_passage && r.best_passage.text ? r.best_passage.text : "");
+      const snippetHtml = snippetRaw
+        ? `<div class="cmp-card-snippet">${boldQueryWords(escapeHtml(snippetRaw), query)}</div>`
+        : "";
+      return `
+        <article class="cmp-card">
+          <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
+          <p class="cmp-card-details">${escapeHtml(details)}</p>
+          ${snippetHtml}
+          <div class="cmp-card-score">score: ${score}</div>
+        </article>`;
+    } else {
+      const passages = Array.isArray(r.passages) && r.passages.length > 0
+        ? r.passages
+        : (r.best_passage ? [r.best_passage] : []);
+      const passageText = passages.length > 0 && passages[0] && passages[0].text
+        ? passages[0].text
+        : "";
+      const passageHtml = passageText
+        ? `<div class="passage">
+             <div class="passage-label">Closest passage</div>
+             <p class="passage-text"><mark>${highlightPassage(passageText, query)}</mark></p>
+           </div>`
+        : "";
+      return `
+        <article class="cmp-card">
+          <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
+          <p class="cmp-card-details">${escapeHtml(details)}</p>
+          ${passageHtml}
+          <div class="cmp-card-score">score: ${score}</div>
+        </article>`;
+    }
+  }
+
+  async function doCompare(query) {
+    const k = 10;
+    compareBtn.disabled = true;
+    compareStatusEl.textContent = "Searching…";
+    compareSemanticEl.innerHTML = "";
+    compareKeywordEl.innerHTML = "";
+    compareColumns.hidden = false;
+
+    try {
+      const [semResp, kwResp] = await Promise.all([
+        fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}&k=${k}`),
+        fetch(`${API_BASE}/search/exact?q=${encodeURIComponent(query)}&k=${k}`),
+      ]);
+
+      const semData = semResp.ok ? await semResp.json() : { results: [] };
+      const kwData  = kwResp.ok  ? await kwResp.json()  : { results: [] };
+
+      const semResults = Array.isArray(semData.results) ? semData.results : [];
+      const kwResults  = Array.isArray(kwData.results)  ? kwData.results  : [];
+
+      compareStatusEl.textContent =
+        `Semantic: ${semResults.length} result${semResults.length === 1 ? "" : "s"}` +
+        ` · Keyword: ${kwResults.length} result${kwResults.length === 1 ? "" : "s"}`;
+
+      compareSemanticEl.innerHTML = semResults.length
+        ? semResults.map((r) => renderCmpCard(r, false, query)).join("")
+        : '<div class="empty">No semantic results.</div>';
+
+      compareKeywordEl.innerHTML = kwResults.length
+        ? kwResults.map((r) => renderCmpCard(r, true, query)).join("")
+        : '<div class="empty">No keyword results.</div>';
+    } catch (err) {
+      compareStatusEl.textContent = "";
+      compareSemanticEl.innerHTML =
+        `<div class="error-state"><strong>Search error</strong>${escapeHtml(err.message)}</div>`;
+    } finally {
+      compareBtn.disabled = false;
+    }
+  }
+
+  compareBtn.addEventListener("click", () => {
+    const query = compareInput.value.trim();
+    if (query) doCompare(query);
+  });
+
+  compareInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      const query = compareInput.value.trim();
+      if (query) doCompare(query);
+    }
+  });
 
   // ---------------------------------------------------------------------------
   // Bulk Import
