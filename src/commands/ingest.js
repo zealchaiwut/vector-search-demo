@@ -1,19 +1,23 @@
 import { generateDocuments } from "../data/generator.js";
 import { chunkDocuments } from "../data/chunker.js";
 import { batchEmbed } from "../data/embedder.js";
-import { dropCollection, createCollection, upsertRows } from "../data/collection.js";
 import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveBackend, logActiveBackend, getStore } from "../store/factory.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..", "..");
 const ATTACHMENTS_DIR = join(REPO_ROOT, "attachments");
 
 export async function runIngest() {
+  const backend = resolveBackend();
+  logActiveBackend(backend);
+  const store = await getStore(backend);
+
   // Reset collection from scratch (idempotent)
-  await dropCollection();
-  await createCollection();
+  await store.dropCollection();
+  await store.createCollection();
 
   // Reset attachments directory
   if (existsSync(ATTACHMENTS_DIR)) {
@@ -48,7 +52,7 @@ export async function runIngest() {
     embedding: c.embedding,
   }));
 
-  await upsertRows(rows);
+  await store.upsertRows(rows);
 
   process.stdout.write(`${articles.length} docs / ${rows.length} chunks indexed\n`);
 }

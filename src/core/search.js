@@ -17,11 +17,10 @@ import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createEmbedder } from "../embeddings/index.js";
-import { useMilvus, milvusAddress } from "../data/backend.js";
+import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
-const COLLECTION_NAME = "documents";
 
 const EF = 64;
 
@@ -163,12 +162,7 @@ async function selectBestPassage(docText, queryEmbedding, embedder) {
 // ---------------------------------------------------------------------------
 // Milvus-backed search path (used when DATA_BACKEND=milvus / MILVUS_HOST set)
 // ---------------------------------------------------------------------------
-//
-// TODO(milvus): the app currently runs mock-only. This path shares the semantic
-// best_passage logic with the file backend, but has NOT been re-verified end to
-// end against a live Milvus instance after the semantic-highlight change. Verify
-// against a real Milvus (docker compose) when the Milvus connection work is
-// picked up — confirm result shape, offsets, and passage selection still hold.
+
 async function _searchMilvus(query, k) {
   const trimmed = (query ?? "").trim();
   if (!trimmed) return [];
@@ -176,60 +170,13 @@ async function _searchMilvus(query, k) {
   const embedder = await getEmbedder();
   const [queryEmbedding] = await embedder.embed([trimmed]);
 
-  const { MilvusClient } = await import("@zilliz/milvus2-sdk-node");
-  const client = new MilvusClient({ address: milvusAddress() });
+  const { MilvusStore } = await import("../store/milvus-store.js");
+  const store = new MilvusStore(milvusAddress());
 
-  let searchResult;
-  try {
-    searchResult = await client.search({
-      collection_name: COLLECTION_NAME,
-      data: [queryEmbedding],
-      output_fields: ["id", "headline", "details", "attachment_url"],
-      limit: EF,
-      params: { ef: EF },
-      // Strong consistency so results reflect upserts/deletes immediately
-      // (the demo flow creates or deletes an article and searches right after).
-      consistency_level: "Strong",
-    });
-  } catch (err) {
-    const message = String(err?.message ?? err);
-    // Expected: Milvus collection hasn't been created yet (e.g. before first ingest).
-    const isExpected =
-      /collection.*(not found|doesn'?t exist|not exist)/i.test(message) ||
-      /COLLECTION_NOT_EXIST/i.test(message) ||
-      err?.code === 25; // Milvus SDK error code for collection not found
+  const candidates = await store.search(queryEmbedding, EF);
+  const top = candidates.filter((r) => r.score > 0).slice(0, k);
 
-    console.error(
-      `[search] Milvus error (collection=${COLLECTION_NAME}, expected=${isExpected}): ${message}`
-    );
-
-    if (isExpected) return [];
-    throw err;
-  }
-
-  const hits = searchResult.results || [];
-  if (hits.length === 0) return [];
-
-  // Collapse: keep best-scoring chunk per article.
-  const byArticleId = new Map();
-  for (const hit of hits) {
-    const articleId = hit.id.split(":")[0];
-    if (!byArticleId.has(articleId) || hit.score > byArticleId.get(articleId).score) {
-      byArticleId.set(articleId, {
-        articleId,
-        id: articleId,
-        headline: hit.headline,
-        details: hit.details,
-        attachment_url: hit.attachment_url,
-        score: hit.score,
-      });
-    }
-  }
-
-  const top = [...byArticleId.values()]
-    .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, k);
+  if (top.length === 0) return [];
 
   return Promise.all(
     top.map(async (r) => {
@@ -314,10 +261,45 @@ async function _searchFile(query, k) {
 }
 
 // ---------------------------------------------------------------------------
+// Postgres-backed search path (DB_BACKEND=postgres)
+// ---------------------------------------------------------------------------
+
+async function _searchPostgres(query, k) {
+  const trimmed = (query ?? "").trim();
+  if (!trimmed) return [];
+
+  const embedder = await getEmbedder();
+  const [queryEmbedding] = await embedder.embed([trimmed]);
+
+  const { getPgStore } = await import("../store/PgVectorStore.js");
+  const store = getPgStore();
+  const hits = await store.search(queryEmbedding, k);
+  if (hits.length === 0) return [];
+
+  return Promise.all(
+    hits.map(async (hit) => {
+      const best_passage = await selectBestPassage(hit.details, queryEmbedding, embedder);
+      return {
+        id: hit.id,
+        headline: hit.headline,
+        details: hit.details.replace(/\s+/g, " ").trim().slice(0, 240),
+        score: parseFloat(hit.score.toFixed(4)),
+        attachment_url: hit.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(hit.attachment_url),
+        best_passage,
+      };
+    })
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 async function _searchImpl(query, k) {
+  if (usePostgres()) {
+    return _searchPostgres(query, k);
+  }
   if (useMilvus()) {
     return _searchMilvus(query, k);
   }

@@ -1,8 +1,13 @@
-import { entityCount, listArticles } from "../data/collection.js";
+import { resolveBackend, logActiveBackend, getStore } from "../store/factory.js";
 
 export async function runVerify() {
-  const vectorCount = entityCount();
-  const articleCount = listArticles().length;
+  const backend = resolveBackend();
+  logActiveBackend(backend);
+  const store = await getStore(backend);
+
+  const vectorCount = await store.entityCount();
+  const articles = await store.listArticles();
+  const articleCount = articles.length;
 
   if (vectorCount === articleCount) {
     process.stdout.write(`OK: ${articleCount} articles, ${vectorCount} vectors\n`);
