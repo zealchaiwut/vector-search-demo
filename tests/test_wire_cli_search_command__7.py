@@ -1,7 +1,6 @@
 """Tests for issue #7: Wire CLI search command to searchDocuments core (runs against UAT)"""
 import os
 import subprocess
-import sys
 
 import httpx
 import pytest
