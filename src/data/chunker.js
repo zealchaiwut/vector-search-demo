@@ -1,37 +1,39 @@
 /**
- * Word-window chunker for vector-search-demo.
- * Splits article bodies into overlapping word-window chunks.
+ * Character-window chunker for vector-search-demo.
+ * Splits article bodies into overlapping fixed-length character chunks.
+ * Character-based (not whitespace-based) so it works correctly for Thai and
+ * other scripts that have no space between words.
  */
 
-const DEFAULT_WORD_SIZE = 120;
-const DEFAULT_OVERLAP = 30;
+export const CHUNK_SIZE = 500;
+export const CHUNK_OVERLAP = 100;
 
 /**
- * Split an article into overlapping word-window chunks.
- * @param {object} article - { id, headline, details }
- * @param {number} wordSize - target words per chunk (default 120)
- * @param {number} overlap - word overlap between consecutive chunks (default 30)
+ * Split an article into overlapping character-window chunks.
+ * @param {object} article - { id, headline, details, attachment_url }
+ * @param {number} chunkSize - characters per chunk (default CHUNK_SIZE)
+ * @param {number} overlap - character overlap between consecutive chunks (default CHUNK_OVERLAP)
  * @returns {Array<{id, headline, details, attachment_url}>}
  */
-export function chunkDocument(article, wordSize = DEFAULT_WORD_SIZE, overlap = DEFAULT_OVERLAP) {
+export function chunkDocument(article, chunkSize = CHUNK_SIZE, overlap = CHUNK_OVERLAP) {
   const { id, headline, details } = article;
-  const words = details.trim().split(/\s+/).filter((w) => w.length > 0);
+  const text = (details ?? "").trim();
 
-  if (words.length === 0) return [];
+  if (text.length === 0) return [];
 
-  const stride = wordSize - overlap;
+  const stride = chunkSize - overlap;
   const chunks = [];
   let i = 0;
 
-  while (i < words.length) {
-    const slice = words.slice(i, i + wordSize);
+  while (i < text.length) {
+    const slice = text.slice(i, i + chunkSize);
     chunks.push({
       id: `${id}:${chunks.length}`,
       headline,
-      details: slice.join(" "),
-      attachment_url: `/download/${id}`,
+      details: slice,
+      attachment_url: article.attachment_url || `/download/${id}`,
     });
-    if (i + wordSize >= words.length) break;
+    if (i + chunkSize >= text.length) break;
     i += stride;
   }
 
