@@ -1,7 +1,5 @@
 """Tests for issue #58: Route search command through factory store interface (runs against UAT)"""
 import os
-import subprocess
-import sys
 
 # No httpx needed for this ticket — all steps are CLI/file inspection
 # UAT_BASE_URL not used; tests hit the local CLI and inspect the codebase
