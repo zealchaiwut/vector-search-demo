@@ -12,7 +12,6 @@ import json
 import os
 import subprocess
 
-import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKAGE_JSON = os.path.join(REPO_ROOT, "package.json")
