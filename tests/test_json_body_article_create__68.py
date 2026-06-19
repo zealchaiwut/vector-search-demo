@@ -6,7 +6,6 @@ Tests both the API (POST /articles with JSON body) and the UI (Paste JSON form).
 """
 
 import os
-import json
 import pytest
 import httpx
 
@@ -22,6 +21,11 @@ if not BASE_URL.startswith("http"):
 
 @pytest.fixture
 def client():
+    try:
+        with httpx.Client(timeout=3.0) as probe:
+            probe.get(BASE_URL + "/")
+    except Exception:
+        pytest.skip(f"Live server not reachable at {BASE_URL} — skipping live tests")
     with httpx.Client(base_url=BASE_URL, timeout=10.0) as c:
         yield c
 

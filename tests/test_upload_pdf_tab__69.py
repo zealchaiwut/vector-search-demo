@@ -89,9 +89,10 @@ def test_ac1_upload_pdf_panel_exists():
 def test_ac2_file_input_accepts_pdf():
     """AC2: Upload PDF panel has a file input with accept='.pdf' or 'application/pdf'."""
     src = _html_src()
-    assert re.search(r'accept\s*=\s*["\'][^"\']*\.pdf[^"\']*["\']', src, re.IGNORECASE) or \
-           re.search(r'accept\s*=\s*["\']application/pdf["\']', src, re.IGNORECASE), \
-        "File input must have accept='.pdf' or accept='application/pdf'"
+    assert (
+        re.search(r'accept\s*=\s*["\'][^"\']*\.pdf[^"\']*["\']', src, re.IGNORECASE)
+        or re.search(r'accept\s*=\s*["\']application/pdf["\']', src, re.IGNORECASE)
+    ), "File input must have accept='.pdf' or accept='application/pdf'"
 
 
 # ---------------------------------------------------------------------------
@@ -319,14 +320,14 @@ page.drawText('This is the body text of the test article for issue 69.', {
 const bytes = await pdfDoc.save();
 process.stdout.write(Buffer.from(bytes).toString('base64'));
 """
-    out, err, rc = subprocess.run(
+    out = subprocess.run(
         ["node", "--input-type=module"],
         input=script,
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
         timeout=30,
-    ).stdout, "", 0
+    ).stdout
     import base64
     return base64.b64decode(out)
 
