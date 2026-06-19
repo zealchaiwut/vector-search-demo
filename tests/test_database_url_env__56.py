@@ -1,5 +1,4 @@
 """Tests for issue #56: Add DATABASE_URL to .env.example for postgres backend"""
-import os
 import re
 from pathlib import Path
 
