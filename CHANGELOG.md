@@ -3,6 +3,15 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 8 (2026-06-19)
+
+- #41: Clarify articleId validation return semantics via getArticleIdError alias
+- #42: Add docstring to resolveAttachmentUrlType helper
+- #74: Move @napi-rs/canvas to optionalDependencies
+- #80: Store and retrieve Postgres embeddings at chunk granularity
+- #81: Return and render multiple passages per search result
+- #82: Add exact-keyword search endpoint (GET /search/exact) and Compare tab
+
 ## Sprint 7 (2026-06-19)
 
 - #66: Add PDF text extraction service with Thai OCR

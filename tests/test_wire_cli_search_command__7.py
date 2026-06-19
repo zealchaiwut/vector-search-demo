@@ -1,7 +1,6 @@
 """Tests for issue #7: Wire CLI search command to searchDocuments core (runs against UAT)"""
 import os
 import subprocess
-import sys
 
 import httpx
 import pytest
@@ -37,13 +36,14 @@ def client():
 
 # --- AC1: search.js calls searchDocuments with query and k ---
 
-def test_wire_cli_search_command__search_command_imports_searchdocuments():
-    # AC1: src/commands/search.js must import searchDocuments from core
+def test_wire_cli_search_command__search_command_uses_factory_store():
+    # AC1 updated per issue #58: search.js must route through getStore().search()
     assert os.path.exists(SEARCH_CMD_PATH), f"search.js not found at {SEARCH_CMD_PATH}"
     with open(SEARCH_CMD_PATH) as f:
         src = f.read()
-    assert "searchDocuments" in src, "search.js does not reference searchDocuments"
-    assert "core/search" in src, "search.js does not import from core/search"
+    assert "getStore" in src, "search.js must use getStore() from factory (issue #58)"
+    assert "store.search(" in src, "search.js must call store.search() on factory store"
+    assert "searchDocuments" not in src, "search.js must not directly call searchDocuments (issue #58)"
 
 
 def test_wire_cli_search_command__search_endpoint_returns_results(client):

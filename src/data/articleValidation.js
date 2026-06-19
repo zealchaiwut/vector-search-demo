@@ -12,6 +12,9 @@ export function validateArticleId(articleId) {
   return null;
 }
 
+// Alias with an explicit name: null means no error, a string is the error message.
+export const getArticleIdError = validateArticleId;
+
 /**
  * Validates article fields. Returns an array of {field, message} error objects.
  * An empty array means all fields are valid.
