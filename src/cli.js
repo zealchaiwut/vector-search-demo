@@ -32,9 +32,15 @@ if (command === "search") {
     process.stderr.write(`Error: ${err.message}\n`);
     process.exit(1);
   });
+} else if (command === "re-embed") {
+  const { runReEmbed } = await import("./commands/re-embed.js");
+  runReEmbed().catch((err) => {
+    process.stderr.write(`Error: ${err.message}\n`);
+    process.exit(1);
+  });
 } else {
   process.stderr.write(
-    `Usage: commander <command> [options]\n\nCommands:\n  search <query> [-k <number>]  Search indexed documents\n  ingest                        Index synthetic documents into the collection\n  init [--recreate]             Provision the Milvus documents collection\n  ping                          Check Milvus connectivity\n  verify                        Check vector/article count integrity\n`
+    `Usage: commander <command> [options]\n\nCommands:\n  search <query> [-k <number>]  Search indexed documents\n  ingest                        Index synthetic documents into the collection\n  init [--recreate]             Provision the Milvus documents collection\n  ping                          Check Milvus connectivity\n  verify                        Check vector/article count integrity\n  re-embed                      Recompute embeddings for all existing articles and chunks\n`
   );
   process.exit(1);
 }
