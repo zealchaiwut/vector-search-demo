@@ -1,5 +1,8 @@
-import { resolveBackend, logActiveBackend } from "../store/factory.js";
-import { searchDocuments } from "../core/search.js";
+import {
+  resolveBackend,
+  logActiveBackend,
+  getStore,
+} from "../store/factory.js";
 
 function parseArgs(argv) {
   // argv is the slice after ["node", "cli.js", "search"]
@@ -25,7 +28,7 @@ export async function runSearch(argv) {
 
   if (!query || query.trim() === "") {
     process.stderr.write(
-      "Usage: commander search <query> [-k <number>]\nError: query is required\n"
+      "Usage: commander search <query> [-k <number>]\nError: query is required\n",
     );
     process.exit(1);
   }
@@ -33,7 +36,8 @@ export async function runSearch(argv) {
   const backend = resolveBackend();
   logActiveBackend(backend);
 
-  const results = await searchDocuments(query, k);
+  const store = await getStore(backend);
+  const results = await store.search(query, k);
 
   if (results.length === 0) {
     process.stdout.write("No results found\n");
@@ -45,11 +49,11 @@ export async function runSearch(argv) {
     const rank = i + 1;
     process.stdout.write(
       `\n--- Result ---\n` +
-      `Rank:       ${rank}\n` +
-      `Headline:   ${r.headline}\n` +
-      `ID:         ${r.id}\n` +
-      `Score:      ${r.score}\n` +
-      `URL:        ${r.attachment_url}\n`
+        `Rank:       ${rank}\n` +
+        `Headline:   ${r.headline}\n` +
+        `ID:         ${r.id}\n` +
+        `Score:      ${r.score}\n` +
+        `URL:        ${r.attachment_url}\n`,
     );
   }
   process.stdout.write("\n");

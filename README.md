@@ -173,7 +173,7 @@ uses the same backend automatically.
 |--------------|-------------|
 | `mock` | **Default.** File-backed store (`collection.json`). No external services required. Ideal for local development, CI, and offline testing. |
 | `milvus` | Live Milvus instance. Requires `MILVUS_HOST` (or `docker compose up`). Provides HNSW ANN search with COSINE similarity. |
-| `postgres` | Postgres-backed store. Recognised by the factory; full wiring is in progress. |
+| `postgres` | Postgres-backed store via pgvector. Requires `DATABASE_URL` (e.g. `postgresql://vectoruser:vectorpass@localhost:5432/vectordb`) and optionally `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` for the pg client. Run `docker compose up postgres` to start the bundled pgvector service. |
 
 Each command prints a startup confirmation line so you always know which backend
 is active:
