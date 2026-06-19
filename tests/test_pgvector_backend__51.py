@@ -268,11 +268,11 @@ def test_ac6_pg_store_has_on_conflict():
 
 
 def test_ac7_pg_store_has_delete_query():
-    """PgVectorStore.js must use DELETE FROM articles WHERE id = $1."""
+    """PgVectorStore.js must delete from articles by article_id (removes all chunks for an article)."""
     with open(PG_STORE_PATH) as f:
         src = f.read()
-    assert re.search(r"DELETE\s+FROM\s+articles\s+WHERE\s+id\s*=", src, re.IGNORECASE), (
-        "PgVectorStore must have DELETE FROM articles WHERE id = ... in its delete method"
+    assert re.search(r"DELETE\s+FROM\s+articles\s+WHERE\s+article_id\s*=", src, re.IGNORECASE), (
+        "PgVectorStore must use DELETE FROM articles WHERE article_id = ... to remove all chunk rows"
     )
 
 
