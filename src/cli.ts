@@ -49,4 +49,12 @@ program
     await runSearch(queryParts);
   });
 
+program
+  .command("re-embed")
+  .description("Recompute embeddings for all existing articles and chunks")
+  .action(async () => {
+    const { runReEmbed } = await import("./commands/re-embed.js");
+    await runReEmbed();
+  });
+
 program.parse();

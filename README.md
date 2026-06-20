@@ -11,15 +11,17 @@ for download. Includes a recall@k evaluation harness.
 
 ### ✅ Built and verified end-to-end
 - **CLI** (`init`, `ingest`, `search`, `serve`, `ping`) via `node dist/cli.js <cmd>`.
-- **Ingestion pipeline** — a small built-in corpus (6 docs in `src/data/generator.js`)
-  is chunked, embedded using MiniLM (384-dim neural vectors via `src/embeddings/index.js`),
-  stored in Milvus (`MILVUS_HOST` set) or a local `collection.json` fallback, and saved
-  as downloadable `.txt` files under `attachments/`.
-- **Search** — `core/search.js` embeds the query with MiniLM and runs ANN search via
-  Milvus (HNSW COSINE, EF=64 over-fetch, chunk collapsing per article) when
-  `MILVUS_HOST` is set, or falls back to a linear cosine scan over `collection.json`.
-  Each result now includes a `passages` array (top-scoring deduplicated chunks) in
-  addition to `best_passage`.
+- **Ingestion pipeline** — a small built-in corpus (7 docs including a Thai article in
+  `src/data/generator.js`) is chunked into overlapping 500-character windows (100-char
+  overlap, character-based for Thai compatibility), embedded using multilingual-e5-small
+  (384-dim, `src/embeddings/index.js`), stored in Milvus (`MILVUS_HOST` set) or a local
+  `collection.json` fallback, and saved as downloadable `.txt` files under `attachments/`.
+- **Search** — `core/search.js` embeds the query with the `query:` e5 instruction prefix and
+  runs ANN search via Milvus (HNSW COSINE, EF=64 over-fetch, chunk collapsing per article)
+  when `MILVUS_HOST` is set, or falls back to a linear cosine scan over `collection.json`.
+  Each result includes a `passages` array (top-scoring deduplicated chunks with per-chunk
+  scores) and a `chunks` array (all matched chunks for the article, each with `text` and
+  `score`) in addition to `best_passage`.
 - **Exact/keyword search** — `GET /search/exact` runs Postgres FTS (`plainto_tsquery` +
   `ts_rank` over a GIN-indexed `tsvector` column). Only active when `DB_BACKEND=postgres`.
 - **Compare tab** — the search UI has a side-by-side tab that runs both semantic and
@@ -78,6 +80,7 @@ node dist/cli.js search <query...>    # search indexed documents (prints results
 node dist/cli.js serve                # start the Fastify server
 node dist/cli.js ping                 # check Milvus connectivity (Docker required)
 node dist/cli.js verify               # check vector/article count integrity
+node dist/cli.js re-embed             # recompute embeddings for all existing articles/chunks
 ```
 
 ## npm scripts
@@ -128,13 +131,16 @@ Search result shape (`GET /search`):
       },
       "passages": [
         { "text": "...", "start_offset": 42, "end_offset": 93, "score": 0.87 }
+      ],
+      "chunks": [
+        { "text": "...", "score": 0.8700 }
       ]
     }
   ]
 }
 ```
 
-`attachment_url` is `null` when absent, or a URL/path string otherwise. Accepted forms: `http(s)://` external URLs, `/download/`-prefixed paths (built-in ingested articles), and `/uploads/`-prefixed paths (PDFs uploaded via the Upload PDF tab). `attachment_url_type` is `"local"` for `/download/`-prefixed paths or `"external"` for `http(s)://` URLs (also `null` when `attachment_url` is absent). Results where `attachment_url` is null do not render a link in the UI. `best_passage` is the highest-scoring passage from the article (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full article text. `passages` is an array of the top-scoring deduplicated chunk passages for the article, each with the same shape as `best_passage` plus a `score` field; `passages[0]` always equals `best_passage`.
+`attachment_url` is `null` when absent, or a URL/path string otherwise. Accepted forms: `http(s)://` external URLs, `/download/`-prefixed paths (built-in ingested articles), and `/uploads/`-prefixed paths (PDFs uploaded via the Upload PDF tab). `attachment_url_type` is `"local"` for `/download/`-prefixed paths or `"external"` for `http(s)://` URLs (also `null` when `attachment_url` is absent). Results where `attachment_url` is null do not render a link in the UI. `best_passage` is the highest-scoring passage from the article (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full article text. `passages` is an array of the top-scoring deduplicated chunk passages for the article, each with the same shape as `best_passage` plus a `score` field; `passages[0]` always equals `best_passage`. `chunks` is an array of all matched chunks for the article, each with a `text` field (the raw chunk text) and a `score` field (cosine similarity, 4 decimal places). Per-passage scores are rendered in the UI as a percentage label (e.g. "· 87%") next to each passage heading.
 
 `POST /articles` accepts either `application/x-www-form-urlencoded` (existing form) or `Content-Type: application/json` with a body of `{ "headline": "...", "details": "...", "attachment_url": "..." }`. Malformed JSON returns HTTP 400; missing required fields return HTTP 422.
 
@@ -214,21 +220,25 @@ Copy `.env.example` to `.env`.
 | `MILVUS_PORT` | `19530` | Milvus gRPC port |
 | `MILVUS_ADDRESS` | `localhost:19530` | Fallback gRPC address for `ping` and the schema helpers when `MILVUS_HOST`/`MILVUS_PORT` are unset |
 | `COLLECTION_NAME` | `documents` | Milvus collection name |
-| `EMBEDDING_MODEL` | `Xenova/all-MiniLM-L6-v2` | Embedding model used by `ingest`. The first ingest run downloads ~90 MB from HuggingFace; subsequent runs use the cached model. |
-| `DIM` | `384` | Embedding dimension — must match the model output (384 for MiniLM). A mismatch raises a clear error at ingest time. |
+| `EMBEDDING_MODEL` | `Xenova/multilingual-e5-small` | Embedding model used by `ingest` and `re-embed`. The first ingest run downloads ~90 MB from HuggingFace; subsequent runs use the cached model. Supports Thai and other scripts via the e5 instruction format (`passage:` / `query:` prefixes). |
+| `DIM` | `384` | Embedding dimension — must match the model output (384 for multilingual-e5-small). A mismatch raises a clear error at ingest time. |
 
 ## Architecture (current path)
 
 ```
-src/data/generator.js   built-in 6-doc corpus
-  -> src/data/chunker.js         split into chunks
-  -> src/data/embedder.js        384-dim MiniLM vectors (via src/embeddings/index.js)
+src/data/generator.js   built-in 7-doc corpus (6 English + 1 Thai)
+  -> src/data/chunker.js         character-window chunks (500 chars / 100 overlap)
+  -> src/data/embedder.js        384-dim multilingual-e5-small vectors (via src/embeddings/index.js)
+                                 each chunk prefixed "passage: " per e5 instruction format
   -> src/data/collection.js  ->  Milvus (when MILVUS_HOST is set)
                              ->  collection.json (local fallback without Milvus)
   -> attachments/*.txt            downloadable source files
 
-src/core/search.js   embeds query with MiniLM, queries Milvus (HNSW COSINE ANN)
+src/commands/re-embed.js  recompute embeddings in-place (mock and postgres backends)
+
+src/core/search.js   embeds query with "query: " e5 prefix, queries Milvus (HNSW COSINE ANN)
                      or falls back to linear cosine scan over collection.json
+                     returns passages (with scores) and chunks per result
 src/milvus/client.js   singleton MilvusClient wrapper (dynamic SDK import)
 src/milvus/schema.ts   Milvus collection schema: HNSW index, COSINE metric, dim=384
 src/server.mjs       HTTP: /health, /search, /download, /articles CRUD,

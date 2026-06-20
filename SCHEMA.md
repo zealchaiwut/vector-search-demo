@@ -10,7 +10,7 @@ Defined in `src/milvus/schema.ts`.
 | `headline` | VarChar(1024) | Article headline |
 | `details` | VarChar(65535) | Article body / chunk text |
 | `attachment_url` | VarChar(512) | Attachment URL: `http(s)://` external links, `/uploads/` paths (PDF uploads), or `/download/` paths (ingested articles) |
-| `embedding` | FloatVector(384) | MiniLM embedding vector |
+| `embedding` | FloatVector(384) | multilingual-e5-small embedding vector (passage prefixed with `"passage: "`) |
 
 ### Vector Index
 
@@ -35,7 +35,7 @@ Each row is one chunk of an article. Multiple rows share the same `article_id`.
 | `headline` | text | Article headline (NOT NULL) |
 | `details` | text | Chunk text (NOT NULL) |
 | `attachment_url` | text | Attachment URL: `http(s)://` external links, `/uploads/` paths, or `/download/` paths (nullable) |
-| `embedding` | vector(384) | MiniLM embedding vector for this chunk (pgvector) |
+| `embedding` | vector(384) | multilingual-e5-small embedding vector for this chunk (pgvector); text prefixed with `"passage: "` before embedding |
 | `created_at` | timestamptz | Row creation timestamp (default: now()) |
 
 ### Vector Index
