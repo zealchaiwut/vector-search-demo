@@ -33,6 +33,14 @@ export function getPostgresStore() {
       const store = await _getImpl();
       return store.list();
     },
+    async deleteArticle(articleId) {
+      const store = await _getImpl();
+      return store.delete(articleId);
+    },
+    async listChunks() {
+      const store = await _getImpl();
+      return store.listChunks();
+    },
     search: searchDocuments,
     async ping() {
       const store = await _getImpl();

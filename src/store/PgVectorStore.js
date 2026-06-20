@@ -110,6 +110,21 @@ export class PgVectorStore {
     return parseInt(result.rows[0].count, 10);
   }
 
+  async listChunks() {
+    const result = await this._pool.query(
+      "SELECT id, article_id, chunk_index, headline, details, attachment_url, embedding FROM articles ORDER BY article_id, chunk_index"
+    );
+    return result.rows.map((r) => ({
+      id: r.id,
+      article_id: r.article_id,
+      chunk_index: r.chunk_index,
+      headline: r.headline,
+      details: r.details,
+      attachment_url: r.attachment_url,
+      embedding: r.embedding,
+    }));
+  }
+
   async list() {
     const result = await this._pool.query(
       `SELECT article_id AS id,
