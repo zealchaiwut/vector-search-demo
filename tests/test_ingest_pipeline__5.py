@@ -97,16 +97,18 @@ def test_ingest_pipeline__generator_produces_15_docs_5_topics():
     assert len(found) >= 5, f"Expected >= 5 distinct topics, found: {found}"
 
 
-# --- AC5: ~120-word chunks with ~30-word overlap ---
+# --- AC5: chunker size and overlap defined as named constants ---
+# Updated by issue #98: chunking switched from word-based (120w/30w) to
+# character-based (CHUNK_SIZE/CHUNK_OVERLAP) for Thai language support.
 
 def test_ingest_pipeline__chunks_120_words_30_word_overlap():
-    # AC5: chunker defaults are 120 words / 30 overlap as constants in source
+    # AC5 (updated by #98): chunker defines CHUNK_SIZE and CHUNK_OVERLAP as named constants
     chunker_path = os.path.join(DATA_DIR, "chunker.js")
     assert os.path.exists(chunker_path), f"chunker.js not found at {chunker_path}"
     with open(chunker_path) as f:
         src = f.read()
-    assert "120" in src, "Word size 120 not found in chunker.js"
-    assert "30" in src, "Overlap 30 not found in chunker.js"
+    assert "CHUNK_SIZE" in src, "CHUNK_SIZE constant not found in chunker.js"
+    assert "CHUNK_OVERLAP" in src, "CHUNK_OVERLAP constant not found in chunker.js"
 
 
 # --- AC6: chunks batch-embedded before insertion ---

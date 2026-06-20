@@ -4,7 +4,7 @@
  * Endpoints:
  *   GET /search?q=<query>    — returns ranked result cards
  *   GET /download/:articleId — returns the source article as a file download
- *   POST /api/upload-pdf     — upload PDF, extract text, return article JSON
+ *   POST /api/upload-pdf     — upload PDF, extract text, return article JSON (no persist)
  *   GET /uploads/:filename   — serve uploaded PDF files
  *   GET /                    — serves public/index.html
  *   GET /static/*            — serves files from public/
@@ -19,7 +19,9 @@ import { randomUUID } from "node:crypto";
 import { searchDocuments } from "./core/search.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
-import { validateArticle, validateArticleId } from "./data/articleValidation.js";
+import { validateArticle, validateArticleId, getArticleIdError } from "./data/articleValidation.js";
+import { chunkDocument } from "./data/chunker.js";
+import { usePostgres } from "./data/backend.js";
 import { extractPdfText } from "./pdf/index.js";
 import { mapPdfToArticle } from "./pdf/mapper.js";
 import { TesseractOcr } from "./ocr/index.js";
@@ -156,8 +158,8 @@ async function handleRequest(req, res) {
       const ocr = new TesseractOcr();
       const text = await extractPdfText(file.data, ocr);
       const attachment_url = `/uploads/${encodeURIComponent(uniqueName)}`;
-      const article = mapPdfToArticle(text, { fileName: safeName, attachmentUrl: attachment_url });
-      jsonResponse(res, 200, article);
+      const articleMeta = mapPdfToArticle(text, { fileName: safeName, attachmentUrl: attachment_url });
+      jsonResponse(res, 200, articleMeta);
     } catch (err) {
       jsonResponse(res, 422, { error: `Extraction failed: ${err.message ?? String(err)}` });
     }
@@ -216,8 +218,16 @@ async function handleRequest(req, res) {
       const details = (row.details ?? "").trim();
       const attachment_url = (row.attachment_url ?? "").trim();
       const id = randomUUID();
-      const [{ embedding }] = await batchEmbed([{ details: `${headline} ${details}` }]);
-      await upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
+      const chunks = chunkDocument({ id, headline, details, attachment_url });
+      const embeddedChunks = await batchEmbed(chunks);
+      const chunkRows = embeddedChunks.map((c) => ({
+        id: c.id,
+        headline: c.headline,
+        details: c.details,
+        attachment_url: c.attachment_url,
+        embedding: c.embedding,
+      }));
+      await upsertRows(chunkRows);
       succeeded++;
     }
     jsonResponse(res, 200, {
@@ -249,8 +259,16 @@ async function handleRequest(req, res) {
     const details = (payload.details ?? "").trim();
     const attachment_url = (payload.attachment_url ?? "").trim();
     const id = randomUUID();
-    const [{ embedding }] = await batchEmbed([{ details: `${headline} ${details}` }]);
-    await upsertRows([{ id: `${id}:0`, headline, details, attachment_url, embedding }]);
+    const chunks = chunkDocument({ id, headline, details, attachment_url });
+    const embeddedChunks = await batchEmbed(chunks);
+    const chunkRows = embeddedChunks.map((c) => ({
+      id: c.id,
+      headline: c.headline,
+      details: c.details,
+      attachment_url: c.attachment_url,
+      embedding: c.embedding,
+    }));
+    await upsertRows(chunkRows);
     jsonResponse(res, 201, { id });
     return;
   }
@@ -267,7 +285,7 @@ async function handleRequest(req, res) {
   // attachments/<id>.txt download file) can still be viewed in full.
   if (req.method === "GET" && pathname.startsWith("/articles/")) {
     const articleId = pathname.slice("/articles/".length);
-    const idError = validateArticleId(articleId);
+    const idError = getArticleIdError(articleId);
     if (idError) {
       jsonResponse(res, 400, { error: idError });
       return;
@@ -288,7 +306,7 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Article id is required" });
       return;
     }
-    const idError = validateArticleId(articleId);
+    const idError = getArticleIdError(articleId);
     if (idError) {
       jsonResponse(res, 400, { error: idError });
       return;
@@ -315,8 +333,18 @@ async function handleRequest(req, res) {
     const headline = (payload.headline ?? "").trim();
     const details = (payload.details ?? "").trim();
     const attachment_url = (payload.attachment_url ?? "").trim();
-    const [{ embedding }] = await batchEmbed([{ details: `${headline} ${details}` }]);
-    await upsertRows([{ id: `${articleId}:0`, headline, details, attachment_url, embedding }]);
+    // Delete existing chunks before re-inserting so reduced chunk counts don't leave orphans.
+    await deleteArticle(articleId);
+    const chunks = chunkDocument({ id: articleId, headline, details, attachment_url });
+    const embeddedChunks = await batchEmbed(chunks);
+    const chunkRows = embeddedChunks.map((c) => ({
+      id: c.id,
+      headline: c.headline,
+      details: c.details,
+      attachment_url: c.attachment_url,
+      embedding: c.embedding,
+    }));
+    await upsertRows(chunkRows);
     jsonResponse(res, 200, { id: articleId });
     return;
   }
@@ -328,7 +356,7 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Article id is required" });
       return;
     }
-    const idError = validateArticleId(articleId);
+    const idError = getArticleIdError(articleId);
     if (idError) {
       jsonResponse(res, 400, { error: idError });
       return;
@@ -342,16 +370,17 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // GET /health/integrity — compare article count vs. vector count
+  // GET /health/integrity — report article count (distinct) and chunk-row count
   if (req.method === "GET" && pathname === "/health/integrity") {
-    const vectorCount = await entityCount();
     const articleCount = (await listArticles()).length;
-    if (vectorCount === articleCount) {
-      jsonResponse(res, 200, { status: "ok", articleCount, vectorCount });
+    let chunkCount;
+    if (usePostgres()) {
+      const { getPgStore } = await import("./store/PgVectorStore.js");
+      chunkCount = await getPgStore().chunkCount();
     } else {
-      const delta = Math.abs(vectorCount - articleCount);
-      jsonResponse(res, 200, { status: "mismatch", articleCount, vectorCount, delta });
+      chunkCount = await entityCount();
     }
+    jsonResponse(res, 200, { status: "ok", articleCount, chunkCount });
     return;
   }
 
@@ -366,6 +395,23 @@ async function handleRequest(req, res) {
     } catch (err) {
       console.error("[server] Search failed unexpectedly:", err?.message ?? err);
       jsonResponse(res, 502, { error: "Search service unavailable" });
+    }
+    return;
+  }
+
+  // GET /search/exact?q=<query>&k=<limit>
+  // Keyword search via Postgres FTS (ts_rank + plainto_tsquery).
+  // Returns [] when no document matches or when DB_BACKEND is not postgres.
+  if (req.method === "GET" && pathname === "/search/exact") {
+    const q = url.searchParams.get("q") ?? "";
+    const k = parseInt(url.searchParams.get("k") ?? "10", 10);
+    try {
+      const { searchExact } = await import("./core/searchExact.js");
+      const results = await searchExact(q, Number.isFinite(k) ? k : 10);
+      jsonResponse(res, 200, { results });
+    } catch (err) {
+      console.error("[server] Exact search failed:", err?.message ?? err);
+      jsonResponse(res, 200, { results: [] });
     }
     return;
   }

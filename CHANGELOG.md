@@ -3,6 +3,22 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 10 (2026-06-20)
+
+- #97: Switch embedder to multilingual-e5-small for Thai support
+- #98: Chunk documents into overlapping character-window segments before indexing
+- #99: Group multi-chunk search results by parent document (adds `chunks` field)
+- #100: Show multiple matching passages per result card with per-passage scores
+
+## Sprint 8 (2026-06-19)
+
+- #41: Clarify articleId validation return semantics via getArticleIdError alias
+- #42: Add docstring to resolveAttachmentUrlType helper
+- #74: Move @napi-rs/canvas to optionalDependencies
+- #80: Store and retrieve Postgres embeddings at chunk granularity
+- #81: Return and render multiple passages per search result
+- #82: Add exact-keyword search endpoint (GET /search/exact) and Compare tab
+
 ## Sprint 7 (2026-06-19)
 
 - #66: Add PDF text extraction service with Thai OCR
