@@ -112,9 +112,13 @@ export class PgVectorStore {
 
   async list() {
     const result = await this._pool.query(
-      `SELECT DISTINCT ON (article_id) article_id AS id, headline, attachment_url
+      `SELECT article_id AS id,
+              (array_agg(headline ORDER BY chunk_index))[1] AS headline,
+              (array_agg(attachment_url ORDER BY chunk_index))[1] AS attachment_url,
+              string_agg(details, ' ' ORDER BY chunk_index) AS details
        FROM articles
-       ORDER BY article_id, chunk_index`
+       GROUP BY article_id
+       ORDER BY article_id`
     );
     return result.rows;
   }
