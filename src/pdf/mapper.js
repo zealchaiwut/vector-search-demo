@@ -25,9 +25,21 @@ function _deriveHeadline(text, title, fileName) {
   if (t) return t;
 
   const firstNonEmpty = (text ?? '').split('\n').find((line) => line.trim());
-  if (firstNonEmpty !== undefined) return firstNonEmpty.trim();
+  if (firstNonEmpty !== undefined) {
+    const line = firstNonEmpty.trim();
+    // Single-line PDF extraction can yield one very long "line"; keep headline short.
+    if (line.length > 200) return _shortExcerpt(line);
+    return line;
+  }
 
   return (fileName ?? '').trim();
+}
+
+/** @param {string} text */
+function _shortExcerpt(text) {
+  const sentenceEnd = text.search(/[.!?。]\s/u);
+  if (sentenceEnd > 0 && sentenceEnd <= 200) return text.slice(0, sentenceEnd + 1).trim();
+  return text.length > 120 ? `${text.slice(0, 120).trim()}…` : text.trim();
 }
 
 /**

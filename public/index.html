@@ -68,6 +68,41 @@
     outline-offset: -3px;
     border-radius: 6px;
   }
+  /* Admin sub-navigation (nested under Admin tab) */
+  .admin-shell { margin-bottom: 28px; }
+  .admin-shell[hidden] { display: none; }
+  .admin-tabs {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0;
+  }
+  .admin-tab {
+    appearance: none;
+    border: 0;
+    background: none;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    padding: 8px 12px;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .admin-tab:hover { color: var(--ink); }
+  .admin-tab[aria-selected="true"] {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .admin-tab:focus-visible {
+    outline: 3px solid var(--accent-soft);
+    outline-offset: -3px;
+    border-radius: 6px;
+  }
   .panel { animation: panel-in 0.18s ease-out; }
   .panel[hidden] { display: none; }
   @keyframes panel-in {
@@ -492,7 +527,40 @@
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 18px;
+    flex-wrap: wrap;
   }
+  .articles-toolbar-left,
+  .articles-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .select-all-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .select-all-label input { cursor: pointer; }
+  .btn-delete-selected {
+    border: 1px solid #fca5a5;
+    background: #fef2f2;
+    color: var(--red);
+    font-family: var(--sans);
+    font-weight: 500;
+    font-size: 14px;
+    padding: 0 16px;
+    height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .btn-delete-selected:hover:not(:disabled) { background: #fee2e2; }
+  .btn-delete-selected:disabled { opacity: 0.45; cursor: not-allowed; }
   .btn-backup, .btn-clear-all {
     border: 0;
     font-family: var(--sans);
@@ -747,7 +815,13 @@
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 14px 18px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
   }
+  .article-row-select { padding-top: 3px; flex-shrink: 0; }
+  .article-row-select input { cursor: pointer; }
+  .article-row-body { flex: 1; min-width: 0; }
   .article-row-head {
     display: flex;
     justify-content: space-between;
@@ -762,7 +836,7 @@
     flex: 1;
   }
   .article-row-actions { display: flex; gap: 8px; flex-shrink: 0; }
-  .btn-edit, .btn-delete {
+  .btn-edit, .btn-delete, .btn-pdf-dl {
     border: 1px solid var(--line);
     border-radius: 6px;
     padding: 5px 12px;
@@ -772,11 +846,16 @@
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
     background: var(--surface);
+    text-decoration: none;
+    display: inline-block;
+    line-height: 1.4;
   }
   .btn-edit { color: var(--accent); }
   .btn-edit:hover { background: var(--accent-soft); border-color: var(--accent); }
   .btn-delete { color: var(--red); }
   .btn-delete:hover { background: #fef2f2; border-color: #fca5a5; }
+  .btn-pdf-dl { color: var(--accent); }
+  .btn-pdf-dl:hover { background: var(--accent-soft); border-color: var(--accent); }
   .article-row-details {
     font-size: 13.5px;
     color: var(--muted);
@@ -944,11 +1023,17 @@
   <nav class="tabs" role="tablist" aria-label="Demo sections">
     <button class="tab" id="tab-search" role="tab" aria-selected="true" aria-controls="panel-search" type="button">Search</button>
     <button class="tab" id="tab-compare" role="tab" aria-selected="false" aria-controls="panel-compare" type="button">Compare</button>
-    <button class="tab" id="tab-add" role="tab" aria-selected="false" aria-controls="panel-add" type="button">Add Article</button>
-    <button class="tab" id="tab-upload-pdf" role="tab" aria-selected="false" aria-controls="panel-upload-pdf" type="button">Upload PDF</button>
-    <button class="tab" id="tab-bulk" role="tab" aria-selected="false" aria-controls="panel-bulk" type="button">Bulk Import</button>
-    <button class="tab" id="tab-articles" role="tab" aria-selected="false" aria-controls="panel-articles" type="button">All Articles</button>
+    <button class="tab" id="tab-admin" role="tab" aria-selected="false" aria-controls="admin-shell" type="button">Admin</button>
   </nav>
+
+  <div class="admin-shell" id="admin-shell" role="tabpanel" aria-labelledby="tab-admin" hidden>
+    <nav class="admin-tabs" role="tablist" aria-label="Admin sections">
+      <button class="admin-tab" id="tab-add" role="tab" aria-selected="false" aria-controls="panel-add" type="button">Add Article</button>
+      <button class="admin-tab" id="tab-upload-pdf" role="tab" aria-selected="false" aria-controls="panel-upload-pdf" type="button">Upload PDF</button>
+      <button class="admin-tab" id="tab-bulk" role="tab" aria-selected="false" aria-controls="panel-bulk" type="button">Bulk Import</button>
+      <button class="admin-tab" id="tab-articles" role="tab" aria-selected="false" aria-controls="panel-articles" type="button">All Articles</button>
+    </nav>
+  </div>
 
   <section class="panel" id="panel-search" role="tabpanel" aria-labelledby="tab-search">
   <div class="searchbar">
@@ -1077,8 +1162,17 @@
 
   <section class="panel articles-section" id="panel-articles" role="tabpanel" aria-labelledby="tab-articles" hidden>
     <div class="articles-toolbar">
-      <button class="btn-backup" id="backup-btn" type="button">Back up all articles</button>
-      <button class="btn-clear-all" id="clear-all-btn" type="button">Clear all articles</button>
+      <div class="articles-toolbar-left">
+        <label class="select-all-label">
+          <input type="checkbox" id="select-all-articles" aria-label="Select all articles" />
+          Select all
+        </label>
+        <button class="btn-delete-selected" id="delete-selected-btn" type="button" disabled>Delete selected</button>
+      </div>
+      <div class="articles-toolbar-right">
+        <button class="btn-backup" id="backup-btn" type="button">Back up all articles</button>
+        <button class="btn-clear-all" id="clear-all-btn" type="button">Clear all articles</button>
+      </div>
     </div>
     <div class="article-list" id="article-list">
       <p class="articles-empty">Loading articles…</p>
@@ -1101,46 +1195,144 @@
   const API_BASE = "";
 
   // ---------------------------------------------------------------------------
-  // Tab navigation — hash-synced, keyboard-accessible
+  // Tab navigation — hash-synced, keyboard-accessible (main + admin sub-tabs)
   // ---------------------------------------------------------------------------
 
-  const TAB_HASHES = {
+  const MAIN_TAB_HASHES = {
     "tab-search": "#search",
     "tab-compare": "#compare",
-    "tab-add": "#add",
-    "tab-upload-pdf": "#upload-pdf",
-    "tab-bulk": "#bulk",
-    "tab-articles": "#articles",
+    "tab-admin": "#admin",
   };
-  const tabEls = Array.from(document.querySelectorAll(".tab"));
+  const ADMIN_TAB_HASHES = {
+    "tab-add": "#admin/add",
+    "tab-upload-pdf": "#admin/upload-pdf",
+    "tab-bulk": "#admin/bulk",
+    "tab-articles": "#admin/articles",
+  };
+  const LEGACY_HASH_MAP = {
+    "#add": "#admin/add",
+    "#upload-pdf": "#admin/upload-pdf",
+    "#bulk": "#admin/bulk",
+    "#articles": "#admin/articles",
+  };
+  const ADMIN_PANEL_IDS = new Set([
+    "panel-add",
+    "panel-upload-pdf",
+    "panel-bulk",
+    "panel-articles",
+  ]);
+  const DEFAULT_ADMIN_TAB = "tab-articles";
 
-  function selectTab(tab, { focus = false, updateHash = true } = {}) {
-    for (const t of tabEls) {
-      const selected = t === tab;
-      t.setAttribute("aria-selected", String(selected));
-      t.tabIndex = selected ? 0 : -1;
-      document.getElementById(t.getAttribute("aria-controls")).hidden = !selected;
-    }
-    if (focus) tab.focus();
-    if (updateHash) history.replaceState(null, "", TAB_HASHES[tab.id]);
-    if (tab.id === "tab-articles") loadArticles();
+  const mainTabEls = Array.from(document.querySelectorAll(".tabs > .tab"));
+  const adminTabEls = Array.from(document.querySelectorAll(".admin-tab"));
+  const adminShellEl = document.getElementById("admin-shell");
+
+  function normalizeHash(hash) {
+    if (!hash) return "#search";
+    return LEGACY_HASH_MAP[hash] ?? hash;
   }
 
-  tabEls.forEach((tab) => {
-    tab.addEventListener("click", () => selectTab(tab));
+  function hashForAdminTab(adminTabId) {
+    return ADMIN_TAB_HASHES[adminTabId] ?? "#admin/articles";
+  }
+
+  function adminTabFromHash(hash) {
+    const normalized = normalizeHash(hash);
+    if (normalized.startsWith("#admin/")) {
+      const entry = Object.entries(ADMIN_TAB_HASHES).find(([, h]) => h === normalized);
+      return entry ? entry[0] : DEFAULT_ADMIN_TAB;
+    }
+    return DEFAULT_ADMIN_TAB;
+  }
+
+  function isAdminHash(hash) {
+    const normalized = normalizeHash(hash);
+    return normalized === "#admin" || normalized.startsWith("#admin/");
+  }
+
+  function selectAdminTab(adminTab, { focus = false, updateHash = true } = {}) {
+    for (const t of adminTabEls) {
+      const selected = t === adminTab;
+      t.setAttribute("aria-selected", String(selected));
+      t.tabIndex = selected ? 0 : -1;
+    }
+    for (const panelId of ADMIN_PANEL_IDS) {
+      document.getElementById(panelId).hidden = panelId !== adminTab.getAttribute("aria-controls");
+    }
+    if (focus) adminTab.focus();
+    if (updateHash) history.replaceState(null, "", hashForAdminTab(adminTab.id));
+    if (adminTab.id === "tab-articles") loadArticles();
+  }
+
+  function selectMainTab(mainTab, { focus = false, updateHash = true, adminTabId = null } = {}) {
+    for (const t of mainTabEls) {
+      const selected = t === mainTab;
+      t.setAttribute("aria-selected", String(selected));
+      t.tabIndex = selected ? 0 : -1;
+    }
+
+    const isAdmin = mainTab.id === "tab-admin";
+    adminShellEl.hidden = !isAdmin;
+
+    document.getElementById("panel-search").hidden = mainTab.id !== "tab-search";
+    document.getElementById("panel-compare").hidden = mainTab.id !== "tab-compare";
+    for (const panelId of ADMIN_PANEL_IDS) {
+      document.getElementById(panelId).hidden = !isAdmin;
+    }
+
+    if (isAdmin) {
+      const adminTab = document.getElementById(adminTabId ?? DEFAULT_ADMIN_TAB);
+      selectAdminTab(adminTab, { focus, updateHash });
+    } else if (updateHash) {
+      history.replaceState(null, "", MAIN_TAB_HASHES[mainTab.id]);
+    }
+
+    if (focus) mainTab.focus();
+  }
+
+  mainTabEls.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      if (tab.id === "tab-admin") {
+        selectMainTab(tab, { adminTabId: adminTabFromHash(location.hash) });
+      } else {
+        selectMainTab(tab);
+      }
+    });
+  });
+
+  adminTabEls.forEach((tab) => {
+    tab.addEventListener("click", () => selectAdminTab(tab));
   });
 
   document.querySelector(".tabs").addEventListener("keydown", (e) => {
-    const idx = tabEls.indexOf(document.activeElement);
+    const idx = mainTabEls.indexOf(document.activeElement);
     if (idx === -1) return;
     let next = null;
-    if (e.key === "ArrowRight") next = tabEls[(idx + 1) % tabEls.length];
-    else if (e.key === "ArrowLeft") next = tabEls[(idx - 1 + tabEls.length) % tabEls.length];
-    else if (e.key === "Home") next = tabEls[0];
-    else if (e.key === "End") next = tabEls[tabEls.length - 1];
+    if (e.key === "ArrowRight") next = mainTabEls[(idx + 1) % mainTabEls.length];
+    else if (e.key === "ArrowLeft") next = mainTabEls[(idx - 1 + mainTabEls.length) % mainTabEls.length];
+    else if (e.key === "Home") next = mainTabEls[0];
+    else if (e.key === "End") next = mainTabEls[mainTabEls.length - 1];
     if (next) {
       e.preventDefault();
-      selectTab(next, { focus: true });
+      if (next.id === "tab-admin") {
+        selectMainTab(next, { focus: true, adminTabId: adminTabFromHash(location.hash) });
+      } else {
+        selectMainTab(next, { focus: true });
+      }
+    }
+  });
+
+  document.querySelector(".admin-tabs").addEventListener("keydown", (e) => {
+    const idx = adminTabEls.indexOf(document.activeElement);
+    if (idx === -1) return;
+    let next = null;
+    if (e.key === "ArrowRight") next = adminTabEls[(idx + 1) % adminTabEls.length];
+    else if (e.key === "ArrowLeft") next = adminTabEls[(idx - 1 + adminTabEls.length) % adminTabEls.length];
+    else if (e.key === "Home") next = adminTabEls[0];
+    else if (e.key === "End") next = adminTabEls[adminTabEls.length - 1];
+    if (next) {
+      e.preventDefault();
+      selectMainTab(document.getElementById("tab-admin"), { adminTabId: next.id, focus: true });
     }
   });
 
@@ -1479,24 +1671,43 @@
     return form;
   }
 
+  function isPdfAttachment(url) {
+    if (!url) return false;
+    const lower = String(url).toLowerCase();
+    return lower.endsWith(".pdf") || lower.includes("/uploads/");
+  }
+
   function renderArticleRow(article) {
     const row = document.createElement("div");
     row.className = "article-row";
     row.dataset.id = article.id;
     row.dataset.headline = article.headline;
-    row.dataset.details = article.details;
+    row.dataset.details = article.details ?? "";
     row.dataset.attachmentUrl = article.attachment_url || "";
 
+    const attachmentUrl = article.attachment_url || "";
+    const pdfBtn = isPdfAttachment(attachmentUrl)
+      ? `<a class="btn-pdf-dl" href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener" download aria-label="Download PDF">Download PDF</a>`
+      : "";
+
     row.innerHTML = `
-      <div class="article-row-head">
-        <p class="article-row-title">${escapeHtml(article.headline)}</p>
-        <div class="article-row-actions">
-          <button class="btn-edit" type="button" aria-label="Edit article">Edit</button>
-          <button class="btn-delete" type="button" aria-label="Delete article">Delete</button>
-        </div>
+      <div class="article-row-select">
+        <input type="checkbox" class="article-select" aria-label="Select article" />
       </div>
-      <p class="article-row-details">${escapeHtml(article.details)}</p>
+      <div class="article-row-body">
+        <div class="article-row-head">
+          <p class="article-row-title">${escapeHtml(article.headline)}</p>
+          <div class="article-row-actions">
+            ${pdfBtn}
+            <button class="btn-edit" type="button" aria-label="Edit article">Edit</button>
+            <button class="btn-delete" type="button" aria-label="Delete article">Delete</button>
+          </div>
+        </div>
+        <p class="article-row-details">${escapeHtml(article.details ?? "")}</p>
+      </div>
     `;
+
+    row.querySelector(".article-select").addEventListener("change", updateDeleteSelectedState);
 
     row.querySelector(".btn-edit").addEventListener("click", () => {
       const existing = row.querySelector(".edit-form");
@@ -1507,7 +1718,7 @@
         details: row.dataset.details,
         attachment_url: row.dataset.attachmentUrl,
       };
-      row.appendChild(buildEditForm(currentArticle, row));
+      row.querySelector(".article-row-body").appendChild(buildEditForm(currentArticle, row));
     });
 
     row.querySelector(".btn-delete").addEventListener("click", async () => {
@@ -1521,8 +1732,11 @@
           throw new Error(err.error ?? `Server returned ${resp.status}`);
         }
         row.remove();
-        if (articleListEl.children.length === 0) {
-          articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Create one in the Add Article tab.</p>`;
+        updateDeleteSelectedState();
+        if (articleListEl.querySelectorAll(".article-row").length === 0) {
+          articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Create one in Admin → Add Article.</p>`;
+          selectAllArticlesEl.checked = false;
+          selectAllArticlesEl.disabled = true;
         }
       } catch (err) {
         alert(`Delete failed: ${err.message}`);
@@ -1532,15 +1746,31 @@
     return row;
   }
 
+  async function enrichArticleDetails(article) {
+    if ((article.details ?? "").trim()) return article;
+    try {
+      const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(article.id)}`);
+      if (!resp.ok) return article;
+      const full = await resp.json();
+      return { ...article, details: full.details ?? "", headline: full.headline ?? article.headline };
+    } catch {
+      return article;
+    }
+  }
+
   async function loadArticles() {
     try {
       const resp = await fetch(`${API_BASE}/articles`);
       if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
       const data = await resp.json();
-      const articles = Array.isArray(data.articles) ? data.articles : [];
+      let articles = Array.isArray(data.articles) ? data.articles : [];
+      articles = await Promise.all(articles.map(enrichArticleDetails));
       articleListEl.innerHTML = "";
+      selectAllArticlesEl.checked = false;
+      selectAllArticlesEl.disabled = articles.length === 0;
+      updateDeleteSelectedState();
       if (articles.length === 0) {
-        articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Create one in the Add Article tab.</p>`;
+        articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Create one in Admin → Add Article.</p>`;
         return;
       }
       for (const article of articles) {
@@ -1548,6 +1778,8 @@
       }
     } catch (err) {
       articleListEl.innerHTML = `<p class="articles-empty" style="color:var(--red)">Failed to load articles: ${escapeHtml(err.message)}</p>`;
+      selectAllArticlesEl.disabled = true;
+      updateDeleteSelectedState();
     }
   }
 
@@ -1555,12 +1787,75 @@
   // Articles toolbar — back up (download JSON) + clear all (confirm modal)
   // ---------------------------------------------------------------------------
 
-  const backupBtn       = document.getElementById("backup-btn");
-  const clearAllBtn     = document.getElementById("clear-all-btn");
-  const clearModal      = document.getElementById("clear-modal");
-  const clearCancelBtn  = document.getElementById("clear-cancel-btn");
-  const clearConfirmBtn = document.getElementById("clear-confirm-btn");
-  const clearModalBody  = document.getElementById("clear-modal-body");
+  const backupBtn           = document.getElementById("backup-btn");
+  const clearAllBtn         = document.getElementById("clear-all-btn");
+  const selectAllArticlesEl = document.getElementById("select-all-articles");
+  const deleteSelectedBtn   = document.getElementById("delete-selected-btn");
+  const clearModal          = document.getElementById("clear-modal");
+  const clearCancelBtn      = document.getElementById("clear-cancel-btn");
+  const clearConfirmBtn     = document.getElementById("clear-confirm-btn");
+  const clearModalBody      = document.getElementById("clear-modal-body");
+
+  function getSelectedArticleRows() {
+    return Array.from(articleListEl.querySelectorAll(".article-row .article-select:checked"))
+      .map((cb) => cb.closest(".article-row"));
+  }
+
+  function updateDeleteSelectedState() {
+    const rows = articleListEl.querySelectorAll(".article-row");
+    const selected = getSelectedArticleRows();
+    deleteSelectedBtn.disabled = selected.length === 0;
+    deleteSelectedBtn.textContent = selected.length > 0
+      ? `Delete selected (${selected.length})`
+      : "Delete selected";
+    if (rows.length === 0) {
+      selectAllArticlesEl.checked = false;
+      selectAllArticlesEl.indeterminate = false;
+      return;
+    }
+    selectAllArticlesEl.indeterminate = selected.length > 0 && selected.length < rows.length;
+    selectAllArticlesEl.checked = selected.length === rows.length;
+  }
+
+  selectAllArticlesEl.addEventListener("change", () => {
+    const checked = selectAllArticlesEl.checked;
+    articleListEl.querySelectorAll(".article-select").forEach((cb) => { cb.checked = checked; });
+    updateDeleteSelectedState();
+  });
+
+  deleteSelectedBtn.addEventListener("click", async () => {
+    const rows = getSelectedArticleRows();
+    if (rows.length === 0) return;
+    const label = rows.length === 1
+      ? `"${rows[0].dataset.headline}"`
+      : `${rows.length} articles`;
+    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+
+    deleteSelectedBtn.disabled = true;
+    let failed = 0;
+    for (const row of rows) {
+      try {
+        const resp = await fetch(`${API_BASE}/articles/${encodeURIComponent(row.dataset.id)}`, {
+          method: "DELETE",
+        });
+        if (!resp.ok) {
+          failed++;
+          continue;
+        }
+        row.remove();
+      } catch {
+        failed++;
+      }
+    }
+    updateDeleteSelectedState();
+    if (articleListEl.querySelectorAll(".article-row").length === 0) {
+      articleListEl.innerHTML = `<p class="articles-empty">No articles yet. Create one in Admin → Add Article.</p>`;
+      selectAllArticlesEl.checked = false;
+      selectAllArticlesEl.disabled = true;
+    }
+    if (failed > 0) alert(`${failed} article${failed === 1 ? "" : "s"} could not be deleted.`);
+    deleteSelectedBtn.disabled = getSelectedArticleRows().length === 0;
+  });
 
   async function fetchAllArticles() {
     const resp = await fetch(`${API_BASE}/articles`);
@@ -1635,10 +1930,19 @@
     }
   });
 
-  // Restore the tab from the URL hash (e.g. /#articles); default is Search.
-  // Also establishes the roving tabindex on the tab buttons.
-  const initialTab = tabEls.find((t) => TAB_HASHES[t.id] === location.hash);
-  selectTab(initialTab ?? tabEls[0], { updateHash: false });
+  // Restore tab from URL hash; default is Search.
+  (function initTabsFromHash() {
+    const hash = normalizeHash(location.hash);
+    if (isAdminHash(hash)) {
+      selectMainTab(document.getElementById("tab-admin"), {
+        updateHash: hash !== location.hash,
+        adminTabId: adminTabFromHash(hash),
+      });
+      return;
+    }
+    const mainTab = mainTabEls.find((t) => MAIN_TAB_HASHES[t.id] === hash) ?? mainTabEls[0];
+    selectMainTab(mainTab, { updateHash: false });
+  })();
 
   // ---------------------------------------------------------------------------
   // Compare tab — fires /search and /search/exact in parallel, side by side
