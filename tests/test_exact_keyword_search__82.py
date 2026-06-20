@@ -230,12 +230,36 @@ def test_ac6_compare_grid_layout():
 
 
 def test_ac7_keyword_highlighting_in_compare():
-    """Compare JS must apply boldQueryWords or similar highlighting to keyword results."""
+    """Compare JS must highlight matched terms in keyword-side result cards."""
     with open(INDEX_HTML) as f:
         src = f.read()
-    # Either reuse boldQueryWords or apply similar term bolding
-    assert re.search(r"boldQueryWords|<b>|qw|font-weight.*bold", src), (
+    assert re.search(r"boldQueryWords|<b>|qw|\bkw\b|font-weight.*bold", src), (
         "Compare JS must highlight query terms in keyword-side result cards"
+    )
+
+
+def test_ac7_compare_keyword_uses_passages_array():
+    """Compare keyword column must render stacked passages from the API."""
+    with open(INDEX_HTML) as f:
+        src = f.read()
+    assert re.search(r"isKeyword[\s\S]*?r\.passages", src), (
+        "Compare keyword rendering must iterate r.passages for multi-chunk keyword hits"
+    )
+    assert re.search(r"cmp-kw-snippet|class=\"kw\"", src), (
+        "Compare keyword side must render FTS-matched term highlights (kw class)"
+    )
+
+
+def test_ac7_searchexact_returns_passages_array():
+    """searchExact.js must return a passages array with html highlights per chunk."""
+    with open(SEARCH_EXACT_JS) as f:
+        src = f.read()
+    assert "passages" in src, "searchExact.js must include passages in the response"
+    assert re.search(r'MAX_CHUNKS_PER_ARTICLE\s*=\s*3', src), (
+        "searchExact.js must cap keyword chunk hits at 3 per article"
+    )
+    assert re.search(r'<strong class="kw">', src), (
+        "searchExact.js must convert Postgres <b> tags to strong.kw for matched terms"
     )
 
 

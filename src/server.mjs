@@ -4,7 +4,7 @@
  * Endpoints:
  *   GET /search?q=<query>    — returns ranked result cards
  *   GET /download/:articleId — returns the source article as a file download
- *   POST /api/upload-pdf     — upload PDF, extract text, return article JSON
+ *   POST /api/upload-pdf     — upload PDF, extract text, return article JSON (no persist)
  *   GET /uploads/:filename   — serve uploaded PDF files
  *   GET /                    — serves public/index.html
  *   GET /static/*            — serves files from public/
@@ -159,18 +159,7 @@ async function handleRequest(req, res) {
       const text = await extractPdfText(file.data, ocr);
       const attachment_url = `/uploads/${encodeURIComponent(uniqueName)}`;
       const articleMeta = mapPdfToArticle(text, { fileName: safeName, attachmentUrl: attachment_url });
-      const id = randomUUID();
-      const pdfChunks = chunkDocument({ id, ...articleMeta });
-      const embeddedPdfChunks = await batchEmbed(pdfChunks);
-      const pdfRows = embeddedPdfChunks.map((c) => ({
-        id: c.id,
-        headline: c.headline,
-        details: c.details,
-        attachment_url: c.attachment_url,
-        embedding: c.embedding,
-      }));
-      await upsertRows(pdfRows);
-      jsonResponse(res, 200, { id, ...articleMeta });
+      jsonResponse(res, 200, articleMeta);
     } catch (err) {
       jsonResponse(res, 422, { error: `Extraction failed: ${err.message ?? String(err)}` });
     }

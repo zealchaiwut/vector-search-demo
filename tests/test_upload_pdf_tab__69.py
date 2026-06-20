@@ -155,6 +155,23 @@ def test_ac4_server_returns_headline_details_attachment():
             f"server.mjs upload endpoint must return '{field}' in JSON response"
 
 
+def test_ac4_upload_pdf_does_not_persist_article():
+    """Upload must be extract-only; article is created when user clicks Confirm."""
+    src = _server_src()
+    upload_match = re.search(
+        r'pathname === "/api/upload-pdf"[\s\S]*?(?=\n  // GET /uploads/)',
+        src,
+    )
+    assert upload_match, "Could not locate POST /api/upload-pdf handler in server.mjs"
+    block = upload_match.group(0)
+    assert "upsertRows" not in block, (
+        "POST /api/upload-pdf must not call upsertRows — that creates a duplicate before Confirm"
+    )
+    assert "chunkDocument" not in block, (
+        "POST /api/upload-pdf must not chunk/embed — extraction only until Confirm"
+    )
+
+
 # ---------------------------------------------------------------------------
 # AC5 — Uploaded PDF stored and served at /uploads/<filename>
 # ---------------------------------------------------------------------------
@@ -429,3 +446,24 @@ def test_ac11_live_confirmed_article_findable_via_search(client):
     ids = [r["id"] for r in results]
     assert created_id in ids, \
         f"Created article {created_id!r} not found in search: {ids}"
+
+
+def test_ac4_upload_alone_does_not_create_article(client):
+    """Upload & Extract alone must not add an article — only Confirm creates one."""
+    before_resp = client.get("/articles")
+    assert before_resp.status_code == 200
+    before_count = len(before_resp.json().get("articles", []))
+
+    pdf_bytes = _make_minimal_pdf_bytes()
+    upload_resp = client.post(
+        "/api/upload-pdf",
+        files={"file": ("no_persist_test.pdf", pdf_bytes, "application/pdf")},
+    )
+    assert upload_resp.status_code == 200, f"Upload failed: {upload_resp.text}"
+
+    after_resp = client.get("/articles")
+    assert after_resp.status_code == 200
+    after_count = len(after_resp.json().get("articles", []))
+    assert after_count == before_count, (
+        f"Upload alone must not create an article; before={before_count}, after={after_count}"
+    )
