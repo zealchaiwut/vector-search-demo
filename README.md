@@ -101,6 +101,7 @@ node dist/cli.js re-embed             # recompute embeddings for all existing ar
 | `GET` | `/` | Serve search UI (`public/index.html`) |
 | `GET` | `/health` | `{"status":"ok"}` |
 | `GET` | `/health/integrity` | Compare article count vs. vector count |
+| `GET` | `/api/config` | Runtime config for the UI (`{ "env": "prd" }` from `ENV` in `.env`) |
 | `GET` | `/search?q=<query>&k=<n>` | Return top-k ranked result cards (semantic) |
 | `GET` | `/search/exact?q=<query>&k=<n>` | Return top-k keyword results via Postgres FTS (`DB_BACKEND=postgres` only) |
 | `GET` / `HEAD` | `/download/:articleId` | Download the ingested source article as `.txt` |
@@ -214,6 +215,7 @@ Copy `.env.example` to `.env`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `ENV` | `local` | Deployment label in the UI header. Set to `prd` or `uat` to show `[PRD]` / `[UAT]`; `local` hides the badge. |
 | `DB_BACKEND` | `mock` | Active VectorStore backend (`mock`, `milvus`, `postgres`). Overrides `DATA_BACKEND`. |
 | `PORT` | `8000` | Server port (override — see Setup note about 7000/8000) |
 | `MILVUS_HOST` | (unset) | Milvus host — when set alongside `DB_BACKEND=milvus`, routes storage and search to Milvus |
