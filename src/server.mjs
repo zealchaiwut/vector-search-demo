@@ -4,7 +4,7 @@
  * Endpoints:
  *   GET /search?q=<query>    — returns ranked result cards
  *   GET /download/:articleId — returns the source article as a file download
- *   POST /api/upload-pdf     — upload PDF, extract text, return article JSON (no persist)
+ *   GET /api/config          — public runtime config (ENV label for UI)
  *   GET /uploads/:filename   — serve uploaded PDF files
  *   GET /                    — serves public/index.html
  *   GET /static/*            — serves files from public/
@@ -131,6 +131,13 @@ async function handleRequest(req, res) {
       "Access-Control-Allow-Headers": "Content-Type",
     });
     res.end();
+    return;
+  }
+
+  // GET /api/config — deployment label for the UI (ENV from .env)
+  if (req.method === "GET" && pathname === "/api/config") {
+    const env = (process.env.ENV ?? "local").trim().toLowerCase();
+    jsonResponse(res, 200, { env });
     return;
   }
 

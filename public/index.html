@@ -34,6 +34,23 @@
   .wrap { max-width: 720px; margin: 0 auto; padding: 52px 24px 96px; }
 
   header { margin-bottom: 24px; }
+  header h1 {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .env-badge {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 3px 9px;
+    border-radius: 6px;
+    line-height: 1.2;
+  }
 
   /* Tab navigation */
   .tabs {
@@ -1037,7 +1054,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Vector Search Demo</h1>
+    <h1>Vector Search Demo <span id="env-badge" class="env-badge" hidden></span></h1>
     <p>Semantic similarity search over a small document corpus.</p>
   </header>
 
@@ -1214,6 +1231,23 @@
 
 <script>
   const API_BASE = "";
+
+  // Show deployment label from ENV (e.g. [PRD], [UAT]) when not local.
+  (async function loadEnvBadge() {
+    try {
+      const resp = await fetch(`${API_BASE}/api/config`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const env = (data.env ?? "").trim().toLowerCase();
+      if (!env || env === "local") return;
+      const badge = document.getElementById("env-badge");
+      badge.textContent = `[${env.toUpperCase()}]`;
+      badge.hidden = false;
+      document.title = `Vector Search Demo [${env.toUpperCase()}]`;
+    } catch {
+      /* config endpoint optional */
+    }
+  })();
 
   // ---------------------------------------------------------------------------
   // Tab navigation — hash-synced, keyboard-accessible (main + admin sub-tabs)
