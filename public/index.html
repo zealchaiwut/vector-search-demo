@@ -1002,6 +1002,27 @@
     padding: 0 2px;
     font-weight: 600;
   }
+  .cmp-card-snippet strong.kw {
+    background: #bbf7d0;
+    border-radius: 3px;
+    padding: 0 2px;
+    font-weight: 700;
+    color: #14532d;
+  }
+  .cmp-kw-snippet {
+    margin: 4px 0 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #166534;
+  }
+  .cmp-card-snippet .passage-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #15803d;
+    margin-bottom: 2px;
+  }
   .cmp-card-score {
     font-family: var(--mono);
     font-size: 11px;
@@ -1957,41 +1978,51 @@
 
   function renderCmpCard(r, isKeyword, query) {
     const headline = r.headline ?? "(untitled)";
-    const details  = (r.details ?? "").slice(0, 200);
     const score    = typeof r.score === "number" ? r.score.toFixed(4) : "";
 
     if (isKeyword) {
-      const snippetRaw = typeof r.best_passage === "string"
-        ? r.best_passage
-        : (r.best_passage && r.best_passage.text ? r.best_passage.text : "");
-      const snippetHtml = snippetRaw
-        ? `<div class="cmp-card-snippet">${boldQueryWords(escapeHtml(snippetRaw), query)}</div>`
-        : "";
+      const passages = Array.isArray(r.passages) && r.passages.length > 0
+        ? r.passages
+        : (r.best_passage
+          ? [{ text: r.best_passage, html: escapeHtml(r.best_passage), score: r.score }]
+          : []);
+      const passageBlocks = passages.map((p, i) => {
+        const label = passages.length > 1 ? `Chunk match ${i + 1}` : "Keyword match";
+        const scoreStr = typeof p.score === "number" ? ` · ${p.score.toFixed(4)}` : "";
+        const inner = p.html ?? escapeHtml(p.text ?? "");
+        return `
+          <div class="cmp-card-snippet">
+            <div class="passage-label">${label}${scoreStr}</div>
+            <p class="cmp-kw-snippet">${inner}</p>
+          </div>`;
+      }).join("");
       return `
         <article class="cmp-card">
           <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
-          <p class="cmp-card-details">${escapeHtml(details)}</p>
-          ${snippetHtml}
+          ${passageBlocks}
           <div class="cmp-card-score">score: ${score}</div>
         </article>`;
     } else {
       const passages = Array.isArray(r.passages) && r.passages.length > 0
         ? r.passages
         : (r.best_passage ? [r.best_passage] : []);
-      const passageText = passages.length > 0 && passages[0] && passages[0].text
-        ? passages[0].text
-        : "";
-      const passageHtml = passageText
-        ? `<div class="passage">
-             <div class="passage-label">Closest passage</div>
-             <p class="passage-text"><mark>${highlightPassage(passageText, query)}</mark></p>
-           </div>`
-        : "";
+      const passageBlocks = passages.map((p, i) => {
+        const passageText = p && p.text ? p.text : "";
+        if (!passageText) return "";
+        const label = passages.length > 1 ? `Closest passage ${i + 1}` : "Closest passage";
+        const scoreStr = typeof p.score === "number" ? ` · ${Math.round(p.score * 100)}%` : "";
+        return `
+          <div class="passage">
+            <div class="passage-label">${label}${scoreStr}</div>
+            <p class="passage-text"><mark>${highlightPassage(passageText, query)}</mark></p>
+          </div>`;
+      }).join("");
+      const details = (r.details ?? "").slice(0, 200);
       return `
         <article class="cmp-card">
           <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
           <p class="cmp-card-details">${escapeHtml(details)}</p>
-          ${passageHtml}
+          ${passageBlocks}
           <div class="cmp-card-score">score: ${score}</div>
         </article>`;
     }
