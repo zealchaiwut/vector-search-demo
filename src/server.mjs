@@ -16,7 +16,7 @@ import { existsSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { searchDocuments } from "./core/search.js";
+import { searchDocuments } from "./search/index.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
 import { validateArticle, validateArticleId, getArticleIdError } from "./data/articleValidation.js";
@@ -396,8 +396,10 @@ async function handleRequest(req, res) {
   if (req.method === "GET" && pathname === "/search") {
     const q = url.searchParams.get("q") ?? "";
     const k = parseInt(url.searchParams.get("k") ?? "10", 10);
+    const nParam = url.searchParams.get("n");
+    const n = nParam !== null ? parseInt(nParam, 10) : null;
     try {
-      const results = await search(q, k);
+      const results = await searchDocuments(q, k, n);
       jsonResponse(res, 200, { results });
     } catch (err) {
       console.error("[server] Search failed unexpectedly:", err?.message ?? err);
