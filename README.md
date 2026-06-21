@@ -12,16 +12,18 @@ for download. Includes a recall@k evaluation harness.
 ### ✅ Built and verified end-to-end
 - **CLI** (`init`, `ingest`, `search`, `serve`, `ping`) via `node dist/cli.js <cmd>`.
 - **Ingestion pipeline** — a small built-in corpus (7 docs including a Thai article in
-  `src/data/generator.js`) is chunked into overlapping 500-character windows (100-char
+  `src/data/generator.js`) is chunked into overlapping 400-character windows (80-char
   overlap, character-based for Thai compatibility), embedded using multilingual-e5-small
   (384-dim, `src/embeddings/index.js`), stored in Milvus (`MILVUS_HOST` set) or a local
   `collection.json` fallback, and saved as downloadable `.txt` files under `attachments/`.
-- **Search** — `core/search.js` embeds the query with the `query:` e5 instruction prefix and
+  Chunk size and overlap are configurable via `CHUNK_SIZE` and `CHUNK_OVERLAP` env vars.
+- **Search** — `search/index.js` embeds the query with the `query:` e5 instruction prefix and
   runs ANN search via Milvus (HNSW COSINE, EF=64 over-fetch, chunk collapsing per article)
   when `MILVUS_HOST` is set, or falls back to a linear cosine scan over `collection.json`.
   Each result includes a `passages` array (top-scoring deduplicated chunks with per-chunk
   scores) and a `chunks` array (all matched chunks for the article, each with `text` and
-  `score`) in addition to `best_passage`.
+  `score`) in addition to `best_passage`. The number of chunk hits surfaced per article is
+  capped by `SEARCH_MAX_CHUNKS` (default 3) or the `n` query parameter on `/search`.
 - **Exact/keyword search** — `GET /search/exact` runs Postgres FTS (`plainto_tsquery` +
   `ts_rank` over a GIN-indexed `tsvector` column). Only active when `DB_BACKEND=postgres`.
 - **Compare tab** — the search UI has a side-by-side tab that runs both semantic and
@@ -79,8 +81,9 @@ node dist/cli.js ingest               # ingest the built-in corpus
 node dist/cli.js search <query...>    # search indexed documents (prints results)
 node dist/cli.js serve                # start the Fastify server
 node dist/cli.js ping                 # check Milvus connectivity (Docker required)
-node dist/cli.js verify               # check vector/article count integrity
+node dist/cli.js verify               # check every article has ≥1 chunk and every chunk has a non-null embedding
 node dist/cli.js re-embed             # recompute embeddings for all existing articles/chunks
+node dist/cli.js rechunk              # delete and regenerate all chunks using current CHUNK_SIZE/CHUNK_OVERLAP settings, then re-embed
 ```
 
 ## npm scripts
@@ -102,7 +105,7 @@ node dist/cli.js re-embed             # recompute embeddings for all existing ar
 | `GET` | `/health` | `{"status":"ok"}` |
 | `GET` | `/health/integrity` | Compare article count vs. vector count |
 | `GET` | `/api/config` | Runtime config for the UI (`{ "env": "prd" }` from `ENV` in `.env`) |
-| `GET` | `/search?q=<query>&k=<n>` | Return top-k ranked result cards (semantic) |
+| `GET` | `/search?q=<query>&k=<n>&n=<chunks>` | Return top-k ranked result cards (semantic); `n` caps chunk hits per article (default: `SEARCH_MAX_CHUNKS`, 3) |
 | `GET` | `/search/exact?q=<query>&k=<n>` | Return top-k keyword results via Postgres FTS (`DB_BACKEND=postgres` only) |
 | `GET` / `HEAD` | `/download/:articleId` | Download the ingested source article as `.txt` |
 | `POST` | `/articles` | Create a new article (validated) |
@@ -224,12 +227,16 @@ Copy `.env.example` to `.env`.
 | `COLLECTION_NAME` | `documents` | Milvus collection name |
 | `EMBEDDING_MODEL` | `Xenova/multilingual-e5-small` | Embedding model used by `ingest` and `re-embed`. The first ingest run downloads ~90 MB from HuggingFace; subsequent runs use the cached model. Supports Thai and other scripts via the e5 instruction format (`passage:` / `query:` prefixes). |
 | `DIM` | `384` | Embedding dimension — must match the model output (384 for multilingual-e5-small). A mismatch raises a clear error at ingest time. |
+| `CHUNK_SIZE` | `400` | Characters per chunk used by `ingest` and `rechunk`. Character-based (not whitespace), so Thai text is handled correctly. |
+| `CHUNK_OVERLAP` | `80` | Character overlap between consecutive chunks for `ingest` and `rechunk`. |
+| `SEARCH_MAX_CHUNKS` | `3` | Maximum number of chunk hits to surface per article in search results. Can also be overridden per-request with the `n` query parameter on `GET /search`. |
 
 ## Architecture (current path)
 
 ```
 src/data/generator.js   built-in 7-doc corpus (6 English + 1 Thai)
-  -> src/data/chunker.js         character-window chunks (500 chars / 100 overlap)
+  -> src/data/chunker.js         character-window chunks (400 chars / 80 overlap; override
+                                 via CHUNK_SIZE and CHUNK_OVERLAP env vars)
   -> src/data/embedder.js        384-dim multilingual-e5-small vectors (via src/embeddings/index.js)
                                  each chunk prefixed "passage: " per e5 instruction format
   -> src/data/collection.js  ->  Milvus (when MILVUS_HOST is set)
@@ -237,10 +244,15 @@ src/data/generator.js   built-in 7-doc corpus (6 English + 1 Thai)
   -> attachments/*.txt            downloadable source files
 
 src/commands/re-embed.js  recompute embeddings in-place (mock and postgres backends)
+src/commands/rechunk.js   delete all existing chunks for each article, re-chunk with current
+                          settings, re-embed, and re-store (mock and postgres backends)
+src/commands/verify.js    integrity check: every article has ≥1 chunk, every chunk has a
+                          non-null embedding; exits 0 on pass, 1 on failure
 
-src/core/search.js   embeds query with "query: " e5 prefix, queries Milvus (HNSW COSINE ANN)
-                     or falls back to linear cosine scan over collection.json
-                     returns passages (with scores) and chunks per result
+src/search/index.js  embeds query with "query: " e5 prefix, queries Milvus (HNSW COSINE ANN)
+                     or Postgres (pgvector cosine) or falls back to linear cosine scan over
+                     collection.json; groups chunk hits by article_id (capped at
+                     SEARCH_MAX_CHUNKS per article); returns passages and chunks per result
 src/milvus/client.js   singleton MilvusClient wrapper (dynamic SDK import)
 src/milvus/schema.ts   Milvus collection schema: HNSW index, COSINE metric, dim=384
 src/server.mjs       HTTP: /health, /search, /download, /articles CRUD,

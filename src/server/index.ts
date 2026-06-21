@@ -10,6 +10,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, "..", "..", "public");
 const ATTACHMENTS_DIR = join(__dirname, "..", "..", "attachments");
 
+interface PassageContext {
+  before: string;
+  after: string;
+}
+
+interface Passage {
+  text: string;
+  start_offset: number;
+  end_offset: number;
+  context: PassageContext;
+  score: number;
+}
+
 interface SearchResult {
   id: string;
   headline: string;
@@ -18,7 +31,10 @@ interface SearchResult {
   attachment_url: string | null;
   /** "external" for http(s) URLs, "local" for /download/ paths, null when no attachment */
   attachment_url_type: "external" | "local" | null;
-  best_passage: { text: string; start_offset: number; end_offset: number };
+  best_passage: Passage;
+  /** All matching chunk passages for this article, sorted by score descending. */
+  passages: Passage[];
+  chunks: { text: string; score: number }[];
 }
 
 export async function createServer() {

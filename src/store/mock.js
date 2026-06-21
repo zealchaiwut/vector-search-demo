@@ -9,6 +9,8 @@ import {
   upsertRows,
   entityCount,
   listArticles,
+  deleteArticle,
+  listChunks,
 } from "../data/collection.js";
 
 import { searchDocuments } from "../core/search.js";
@@ -20,6 +22,8 @@ export function getMockStore() {
     upsertRows,
     entityCount,
     listArticles,
+    deleteArticle,
+    listChunks,
     search: searchDocuments,
     async ping() {
       return { address: "file-backed (mock)", version: "n/a" };
