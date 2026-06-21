@@ -4,7 +4,7 @@
  * Endpoints:
  *   GET /search?q=<query>    — returns ranked result cards
  *   GET /download/:articleId — returns the source article as a file download
- *   POST /api/upload-pdf     — upload PDF, extract text, return article JSON (no persist)
+ *   GET /api/config          — public runtime config (ENV label for UI)
  *   GET /uploads/:filename   — serve uploaded PDF files
  *   GET /                    — serves public/index.html
  *   GET /static/*            — serves files from public/
@@ -16,7 +16,7 @@ import { existsSync } from "node:fs";
 import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { searchDocuments } from "./core/search.js";
+import { searchDocuments } from "./search/index.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
 import { validateArticle, validateArticleId, getArticleIdError } from "./data/articleValidation.js";
@@ -131,6 +131,13 @@ async function handleRequest(req, res) {
       "Access-Control-Allow-Headers": "Content-Type",
     });
     res.end();
+    return;
+  }
+
+  // GET /api/config — deployment label for the UI (ENV from .env)
+  if (req.method === "GET" && pathname === "/api/config") {
+    const env = (process.env.ENV ?? "local").trim().toLowerCase();
+    jsonResponse(res, 200, { env });
     return;
   }
 
@@ -389,8 +396,10 @@ async function handleRequest(req, res) {
   if (req.method === "GET" && pathname === "/search") {
     const q = url.searchParams.get("q") ?? "";
     const k = parseInt(url.searchParams.get("k") ?? "10", 10);
+    const nParam = url.searchParams.get("n");
+    const n = nParam !== null ? parseInt(nParam, 10) : null;
     try {
-      const results = await search(q, k);
+      const results = await searchDocuments(q, k, n);
       jsonResponse(res, 200, { results });
     } catch (err) {
       console.error("[server] Search failed unexpectedly:", err?.message ?? err);

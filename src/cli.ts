@@ -57,4 +57,20 @@ program
     await runReEmbed();
   });
 
+program
+  .command("rechunk")
+  .description("Delete and regenerate all chunks using current chunk settings, then re-embed")
+  .action(async () => {
+    const { runRechunk } = await import("./commands/rechunk.js");
+    await runRechunk();
+  });
+
+program
+  .command("verify")
+  .description("Check integrity: every article has ≥1 chunk and every chunk has a non-null embedding")
+  .action(async () => {
+    const { runVerify } = await import("./commands/verify.js");
+    await runVerify();
+  });
+
 program.parse();

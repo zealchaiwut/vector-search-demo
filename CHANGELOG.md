@@ -3,6 +3,13 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 11 (2026-06-20)
+
+- #102: Chunk documents into overlapping vectors for semantic search (chunk defaults: 400 chars / 80 overlap; CHUNK_SIZE/CHUNK_OVERLAP env var overrides; listChunks API on all backends)
+- #103: Refactor search to query chunks and group by article (new src/search/index.js; groups chunk hits by article_id; SEARCH_MAX_CHUNKS cap; /search accepts n param)
+- #104: Show multiple matching passages per search result card (Passage TypeScript type with context.before/after; passages array in SearchResult; per-chunk scores in UI)
+- #105: Add rechunk command and chunk integrity verification (rechunk CLI command deletes and regenerates all chunks; verify checks ≥1 chunk per article and non-null embeddings)
+
 ## Sprint 10 (2026-06-20)
 
 - #97: Switch embedder to multilingual-e5-small for Thai support

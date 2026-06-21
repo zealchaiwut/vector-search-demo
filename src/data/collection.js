@@ -179,3 +179,14 @@ export async function deleteArticle(articleId) {
     return true;
   }
 }
+
+export async function listChunks() {
+  if (usePostgres()) {
+    const store = await getPgStore();
+    return store.listChunks();
+  }
+  if (useMilvus()) {
+    return [];
+  }
+  return fileLoad();
+}
