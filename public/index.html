@@ -1019,6 +1019,7 @@
     padding: 0 2px;
     font-weight: 600;
   }
+  .cmp-kw-snippet strong.kw,
   .cmp-card-snippet strong.kw {
     background: #bbf7d0;
     border-radius: 3px;
@@ -1031,6 +1032,9 @@
     font-size: 12.5px;
     line-height: 1.5;
     color: #166534;
+  }
+  .cmp-kw-snippet .ctx {
+    color: #4b5563;
   }
   .cmp-card-snippet .passage-label {
     font-size: 11px;
@@ -1474,6 +1478,47 @@
     );
   }
 
+  function findQueryInText(text, query) {
+    const hay = String(text ?? "");
+    const needle = String(query ?? "").trim();
+    if (!needle) return -1;
+    const idx = hay.toLocaleLowerCase("th-TH").indexOf(needle.toLocaleLowerCase("th-TH"));
+    if (idx !== -1) return { idx, len: needle.length };
+    for (const word of needle.split(/\s+/).filter(Boolean)) {
+      const wIdx = hay.toLocaleLowerCase("th-TH").indexOf(word.toLocaleLowerCase("th-TH"));
+      if (wIdx !== -1) return { idx: wIdx, len: word.length };
+    }
+    return -1;
+  }
+
+  /** Snippet centered on the keyword match with nearby context (Compare keyword column). */
+  function keywordSnippetHtml(r, query) {
+    const passage = r.passages?.[0];
+    if (passage?.html) return passage.html;
+
+    const text = r.text || passage?.text || r.details || "";
+    const hit = findQueryInText(text, query);
+    if (hit === -1) {
+      const slice = text.slice(0, 220);
+      return `<span class="ctx">${highlightPassage(slice, query)}</span>`;
+    }
+
+    const ctx = 80;
+    const start = Math.max(0, hit.idx - ctx);
+    const end = Math.min(text.length, hit.idx + hit.len + ctx);
+    const slice = text.slice(start, end);
+    const rel = findQueryInText(slice, query);
+    const prefix = start > 0 ? "…" : "";
+    const suffix = end < text.length ? "…" : "";
+    if (rel === -1) {
+      return `${prefix}${highlightPassage(slice, query)}${suffix}`;
+    }
+    const before = escapeHtml(slice.slice(0, rel.idx));
+    const match = escapeHtml(slice.slice(rel.idx, rel.idx + rel.len));
+    const after = escapeHtml(slice.slice(rel.idx + rel.len));
+    return `${prefix}${before}<strong class="kw">${match}</strong>${after}${suffix}`;
+  }
+
   // Escape a raw passage and light-bold the query words inside it.
   function highlightPassage(text, query) {
     return boldQueryWords(escapeHtml(text), query);
@@ -1487,10 +1532,21 @@
     const rawScore = formatRawScore(r.score);
     const snippet = chunkSnippetText(r);
     const fullPassage = viewFullPassageText(r);
-    const passage = r.passages?.[0];
-    const bodyHtml = isKeyword && passage?.html
-      ? passage.html
+    const bodyHtml = isKeyword
+      ? keywordSnippetHtml(r, query)
       : `<mark>${highlightPassage(snippet, query)}</mark>`;
+
+    if (compact && isKeyword) {
+      return `
+        <article class="cmp-card">
+          <div class="card-head">
+            <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
+            <div class="passage-label">Keyword match</div>
+          </div>
+          <p class="cmp-kw-snippet">${bodyHtml}</p>
+          <button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(fullPassage)}">View full article ↗</button>
+        </article>`;
+    }
 
     if (compact) {
       return `
@@ -1502,7 +1558,7 @@
               <div class="label">relevance ${relPct}% · ${rawScore}</div>
             </div>
           </div>
-          <p class="${isKeyword ? "cmp-kw-snippet" : "passage-text"}">${bodyHtml}</p>
+          <p class="passage-text">${bodyHtml}</p>
           <button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(fullPassage)}">View full article ↗</button>
           <div class="cmp-card-score">score: ${typeof r.score === "number" ? r.score.toFixed(4) : ""}</div>
         </article>`;
@@ -2107,7 +2163,6 @@
       const semCap = capResultRows(semResults);
       const kwCap = capResultRows(kwResults);
       const semTop = Math.max(...semCap.visible.map((r) => r.score), 0);
-      const kwTop = Math.max(...kwCap.visible.map((r) => r.score), 0);
 
       compareStatusEl.textContent =
         `Semantic: ${formatResultStatus(semCap.total, semCap.visible.length)}` +
@@ -2118,7 +2173,7 @@
         : '<div class="empty">No semantic results.</div>';
 
       compareKeywordEl.innerHTML = kwCap.visible.length
-        ? kwCap.visible.map((r) => renderCmpCard(r, true, query, kwTop)).join("")
+        ? kwCap.visible.map((r) => renderCmpCard(r, true, query, 0)).join("")
         : '<div class="empty">No keyword results.</div>';
 
       requestAnimationFrame(() => {
