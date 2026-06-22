@@ -2157,7 +2157,11 @@
     URL.revokeObjectURL(url);
   });
 
-  bulkDropzone.addEventListener("click", () => bulkFileInput.click());
+  // Label[for] already opens the picker; skip dropzone click to avoid double dialogs.
+  bulkDropzone.addEventListener("click", (e) => {
+    if (e.target.closest('label[for="bulk-file"]')) return;
+    bulkFileInput.click();
+  });
 
   bulkDropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
@@ -2207,7 +2211,11 @@
   }
 
   bulkUploadBtn.addEventListener("click", async () => {
-    if (!selectedBulkFile) return;
+    if (!selectedBulkFile) {
+      bulkFeedback.className = "bulk-feedback error";
+      bulkFeedback.textContent = "Choose a file first.";
+      return;
+    }
 
     bulkUploadBtn.disabled = true;
     bulkFeedback.className = "bulk-feedback";
@@ -2299,7 +2307,11 @@
 
   let selectedPdfFile = null;
 
-  pdfDropzone.addEventListener("click", () => pdfFileInput.click());
+  // Label[for] already opens the picker; skip dropzone click to avoid double dialogs.
+  pdfDropzone.addEventListener("click", (e) => {
+    if (e.target.closest('label[for="pdf-file"]')) return;
+    pdfFileInput.click();
+  });
   pdfDropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
     pdfDropzone.classList.add("drag-over");
@@ -2358,7 +2370,10 @@
   }
 
   pdfUploadBtn.addEventListener("click", () => {
-    if (!selectedPdfFile) return;
+    if (!selectedPdfFile) {
+      showPdfFeedback("error", "Choose a PDF file first.");
+      return;
+    }
 
     pdfUploadBtn.disabled = true;
     pdfFeedback.className = "pdf-feedback";

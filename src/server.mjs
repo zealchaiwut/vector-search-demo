@@ -149,10 +149,14 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: "Expected multipart/form-data with a boundary" });
       return;
     }
+    let boundary = boundaryMatch[1];
+    if (boundary.startsWith('"') && boundary.endsWith('"')) {
+      boundary = boundary.slice(1, -1);
+    }
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     const rawBody = Buffer.concat(chunks);
-    const file = parseMultipartFile(rawBody, boundaryMatch[1]);
+    const file = parseMultipartFile(rawBody, boundary);
     if (!file) {
       jsonResponse(res, 400, { error: "No PDF file found in request" });
       return;
