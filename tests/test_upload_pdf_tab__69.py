@@ -467,3 +467,23 @@ def test_ac4_upload_alone_does_not_create_article(client):
     assert after_count == before_count, (
         f"Upload alone must not create an article; before={before_count}, after={after_count}"
     )
+
+
+def test_ac4_live_upload_pdf_quoted_boundary(client):
+    """Quoted boundary= in Content-Type must not break multipart parsing."""
+    import uuid
+    pdf_bytes = _make_minimal_pdf_bytes()
+    boundary = "----WebKitFormBoundary" + uuid.uuid4().hex[:16]
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="quoted.pdf"\r\n'
+        f"Content-Type: application/pdf\r\n\r\n"
+    ).encode() + pdf_bytes + f"\r\n--{boundary}--\r\n".encode()
+    resp = client.post(
+        "/api/upload-pdf",
+        content=body,
+        headers={"Content-Type": f'multipart/form-data; boundary="{boundary}"'},
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert "headline" in data and "details" in data and "attachment_url" in data
