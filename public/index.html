@@ -1457,6 +1457,23 @@
           </div>`;
   }
 
+  function renderChunkBlock(chunk, articleId, query, index, total) {
+    const text = chunk && chunk.text ? chunk.text : "";
+    if (!text) return "";
+    const snippet = text.length > 420 ? `${text.slice(0, 420)}…` : text;
+    const label = total > 1 ? `Chunk match ${index + 1}` : "Closest chunk";
+    const score = typeof chunk.score === "number" ? ` · ${Math.round(chunk.score * 100)}%` : "";
+    const viewBtn = index === 0
+      ? `<button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(text)}">View full article ↗</button>`
+      : "";
+    return `
+          <div class="passage">
+            <div class="passage-label">${label}${score}</div>
+            <p class="passage-text"><mark>${highlightPassage(snippet, query)}</mark></p>
+            ${viewBtn}
+          </div>`;
+  }
+
   function renderResults(results, query) {
     const top = Math.max(...results.map(r => r.score), 0);
     resultsEl.innerHTML = results.map(r => {
@@ -1465,11 +1482,14 @@
       const details       = r.details ?? "";
       const articleId     = r.id ?? "";
       const attachmentUrl = r.attachment_url ?? null;
-      // Use passages array if present; fall back to best_passage for backward compat
+      // Prefer chunk hits (up to 3); fall back to passage snippets for older payloads
+      const chunks        = Array.isArray(r.chunks) && r.chunks.length > 0 ? r.chunks : null;
       const passages      = Array.isArray(r.passages) && r.passages.length > 0
         ? r.passages
         : (r.best_passage ? [r.best_passage] : []);
-      const passageBlocks = passages.map((p, i) => renderPassageBlock(p, articleId, query, i === 0)).join("");
+      const passageBlocks = chunks
+        ? chunks.map((c, i) => renderChunkBlock(c, articleId, query, i, chunks.length)).join("")
+        : passages.map((p, i) => renderPassageBlock(p, articleId, query, i === 0)).join("");
       return `
         <article class="card">
           <div class="card-head">
@@ -2037,18 +2057,23 @@
           <div class="cmp-card-score">score: ${score}</div>
         </article>`;
     } else {
+      const chunks = Array.isArray(r.chunks) && r.chunks.length > 0 ? r.chunks : null;
       const passages = Array.isArray(r.passages) && r.passages.length > 0
         ? r.passages
         : (r.best_passage ? [r.best_passage] : []);
-      const passageBlocks = passages.map((p, i) => {
+      const items = chunks
+        ? chunks.map((c) => ({ text: c.text, score: c.score }))
+        : passages;
+      const passageBlocks = items.map((p, i) => {
         const passageText = p && p.text ? p.text : "";
         if (!passageText) return "";
-        const label = passages.length > 1 ? `Closest passage ${i + 1}` : "Closest passage";
+        const label = items.length > 1 ? `Chunk match ${i + 1}` : "Closest chunk";
         const scoreStr = typeof p.score === "number" ? ` · ${Math.round(p.score * 100)}%` : "";
+        const snippet = passageText.length > 420 ? `${passageText.slice(0, 420)}…` : passageText;
         return `
           <div class="passage">
             <div class="passage-label">${label}${scoreStr}</div>
-            <p class="passage-text"><mark>${highlightPassage(passageText, query)}</mark></p>
+            <p class="passage-text"><mark>${highlightPassage(snippet, query)}</mark></p>
           </div>`;
       }).join("");
       const details = (r.details ?? "").slice(0, 200);

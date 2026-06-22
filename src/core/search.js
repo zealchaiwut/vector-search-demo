@@ -175,21 +175,48 @@ async function selectBestPassage(docText, queryEmbedding, embedder) {
 }
 
 // ---------------------------------------------------------------------------
-// Passage deduplication — removes passages whose start_offset is within
-// OFFSET_PROXIMITY characters of a passage already in the output list.
+// Passage deduplication — drop near-duplicate snippets from overlapping chunks.
+// Thai/unpunctuated text gets chunk-scoped offsets so distinct chunks are kept.
 // ---------------------------------------------------------------------------
 
 const OFFSET_PROXIMITY = 20;
+const CHUNK_OFFSET_BASE = 1_000_000;
+
+function normalizePassageText(text) {
+  return (text ?? "").replace(/\s+/g, " ").trim();
+}
+
+function passagesSimilar(a, b) {
+  const left = normalizePassageText(a);
+  const right = normalizePassageText(b);
+  if (!left || !right) return left === right;
+  if (left === right) return true;
+  const shorter = left.length <= right.length ? left : right;
+  const longer = left.length <= right.length ? right : left;
+  return shorter.length >= 20 && longer.includes(shorter);
+}
+
+function withChunkScopedOffsets(passage, chunkIndex) {
+  const base = (chunkIndex ?? 0) * CHUNK_OFFSET_BASE;
+  return {
+    ...passage,
+    start_offset: passage.start_offset + base,
+    end_offset: passage.end_offset + base,
+  };
+}
 
 function deduplicatePassages(passages) {
-  const seen = [];
-  return passages.filter((p) => {
-    const isDup = seen.some(
-      (s) => Math.abs(s.start_offset - p.start_offset) < OFFSET_PROXIMITY,
+  const kept = [];
+  for (const passage of passages) {
+    const isDup = kept.some(
+      (existing) =>
+        passagesSimilar(existing.text, passage.text) ||
+        (Math.abs(existing.start_offset - passage.start_offset) < OFFSET_PROXIMITY &&
+          passagesSimilar(existing.text, passage.text)),
     );
-    if (!isDup) seen.push(p);
-    return !isDup;
-  });
+    if (!isDup) kept.push(passage);
+  }
+  return kept;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,13 +332,16 @@ async function _searchFile(query, k) {
 
       // passages: one entry per top-scoring chunk
       const chunkPassages = await Promise.all(
-        chunks.map(async (chunk) => {
+        chunks.map(async (chunk, chunkIndex) => {
           const p = await selectBestPassage(
             chunk.details,
             queryEmbedding,
             embedder,
           );
-          return { ...p, score: parseFloat(chunk.score.toFixed(4)) };
+          return withChunkScopedOffsets(
+            { ...p, score: parseFloat(chunk.score.toFixed(4)) },
+            chunk.chunk_index ?? chunkIndex,
+          );
         }),
       );
       const passages = deduplicatePassages(chunkPassages).sort(
@@ -382,13 +412,16 @@ async function _searchPostgres(query, k) {
     top.map(async ({ articleId, bestChunk, chunks }) => {
       // passages: one entry per top-scoring chunk
       const chunkPassages = await Promise.all(
-        chunks.map(async (chunk) => {
+        chunks.map(async (chunk, chunkIndex) => {
           const p = await selectBestPassage(
             chunk.details,
             queryEmbedding,
             embedder,
           );
-          return { ...p, score: parseFloat(chunk.score.toFixed(4)) };
+          return withChunkScopedOffsets(
+            { ...p, score: parseFloat(chunk.score.toFixed(4)) },
+            chunk.chunk_index ?? chunkIndex,
+          );
         }),
       );
       const passages = deduplicatePassages(chunkPassages).sort(

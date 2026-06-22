@@ -16,6 +16,7 @@ AC9  - npm run typecheck exits clean (structural: changed files must not use TS-
 
 import os
 import re
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -83,6 +84,18 @@ def test_ac1_searchexact_uses_plainto_tsquery():
         src = f.read()
     assert re.search(r"plainto_tsquery", src, re.IGNORECASE), (
         "searchExact.js must use plainto_tsquery to parse the keyword query"
+    )
+
+
+def test_searchexact_thai_uses_substring_match():
+    """Thai script queries must use ILIKE substring search (english FTS misses Thai)."""
+    with open(SEARCH_EXACT_JS) as f:
+        src = f.read()
+    assert re.search(r"ILIKE", src, re.IGNORECASE), (
+        "searchExact.js must use ILIKE for Thai/non-Latin keyword matching"
+    )
+    assert re.search(r"THAI_RE|\\u0E00", src), (
+        "searchExact.js must detect Thai script to route to substring search"
     )
 
 
@@ -402,6 +415,39 @@ def test_ac1_best_passage_contains_matched_term(client):
     assert bp, "best_passage must be non-empty for a matching document"
     # best_passage should contain text (either the snippet or article text)
     assert len(bp) > 5, f"best_passage should contain a meaningful snippet; got: {bp!r}"
+
+    client.delete(f"/articles/{article_id}")
+
+
+@pytest.mark.skipif(not HAS_DB, reason="Requires live server with Postgres backend")
+def test_thai_keyword_substring_match(client):
+    """Thai query terms must match via substring search when english FTS cannot tokenize."""
+    thai_term = "ความปลอดภัย"
+    details = (
+        "ที่ ธน.(ว) IVB.224/2569 วันที่ 12 มีนาคม 2569 "
+        "เรื่อง ความปลอดภัย ในการลงทุนเป็นสิ่งสำคัญสำหรับลูกค้า"
+    )
+    r = client.post(
+        "/articles",
+        json={"headline": "หนังสือแจ้งลูกค้า", "details": details, "attachment_url": ""},
+    )
+    assert r.status_code == 201
+    article_id = r.json()["id"]
+
+    resp = client.get(f"/search/exact?q={quote(thai_term)}&k=5")
+    assert resp.status_code == 200
+    results = resp.json().get("results", [])
+    matching = [row for row in results if row.get("id") == article_id]
+    assert matching, (
+        f"Thai term {thai_term!r} must match via substring search; got {len(results)} results"
+    )
+    bp = matching[0].get("best_passage", "")
+    assert thai_term in bp, f"best_passage must contain the Thai query term; got: {bp!r}"
+    passages = matching[0].get("passages") or []
+    assert passages, "Thai keyword hit must include passages array"
+    assert any(thai_term in (p.get("text") or "") for p in passages), (
+        "At least one passage snippet must contain the Thai query term"
+    )
 
     client.delete(f"/articles/{article_id}")
 
