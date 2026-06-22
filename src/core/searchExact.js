@@ -7,12 +7,13 @@
  *
  * Only functional when DB_BACKEND=postgres; returns [] for other backends.
  *
- * Response shape per result:
- *   { id, headline, details, score, attachment_url, best_passage, passages }
+ * Response shape per result (flat — one row per chunk):
+ *   { id, article_id, chunk_index, headline, text, score, attachment_url, passages }
  */
 
 import { usePostgres } from "../data/backend.js";
 import { getPgStore } from "../store/PgVectorStore.js";
+import { flattenChunkResults } from "../search/flattenResults.js";
 
 const MAX_CHUNKS_PER_ARTICLE = 3;
 const TS_HEADLINE_OPTS =
@@ -235,13 +236,13 @@ export async function searchExact(query, k = 10) {
 
   try {
     if (THAI_RE.test(trimmed)) {
-      return searchExactSubstring(store, trimmed, k);
+      return flattenChunkResults(await searchExactSubstring(store, trimmed, k));
     }
 
     const ftsResults = await searchExactFts(store, trimmed, k);
-    if (ftsResults.length > 0) return ftsResults;
+    if (ftsResults.length > 0) return flattenChunkResults(ftsResults);
 
-    return searchExactSubstring(store, trimmed, k);
+    return flattenChunkResults(await searchExactSubstring(store, trimmed, k));
   } catch {
     return [];
   }

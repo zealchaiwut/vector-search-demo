@@ -18,6 +18,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createEmbedder } from "../embeddings/index.js";
 import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
+import { flattenChunkResults } from "../search/flattenResults.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -357,9 +358,10 @@ async function _searchFile(query, k) {
         attachment_url_type: resolveAttachmentUrlType(bestChunk.attachment_url),
         best_passage,
         passages,
-        chunks: chunks.map((c) => ({
+        chunks: chunks.map((c, i) => ({
           text: c.details.replace(/\s+/g, " ").trim(),
           score: parseFloat(c.score.toFixed(4)),
+          chunk_index: c.chunk_index ?? i,
         })),
       };
     }),
@@ -438,9 +440,10 @@ async function _searchPostgres(query, k) {
         attachment_url_type: resolveAttachmentUrlType(bestChunk.attachment_url),
         best_passage,
         passages,
-        chunks: chunks.map((c) => ({
+        chunks: chunks.map((c, i) => ({
           text: (c.details || "").replace(/\s+/g, " ").trim(),
           score: parseFloat(c.score.toFixed(4)),
+          chunk_index: c.chunk_index ?? i,
         })),
       };
     }),
@@ -462,6 +465,6 @@ async function _searchImpl(query, k) {
 }
 
 // Returns a Promise — call sites must await.
-export function searchDocuments(query, k = 10) {
-  return _searchImpl(query, k);
+export async function searchDocuments(query, k = 10) {
+  return flattenChunkResults(await _searchImpl(query, k));
 }
