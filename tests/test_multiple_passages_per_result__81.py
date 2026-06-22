@@ -396,18 +396,18 @@ def test_ac8_html_renders_passage_blocks():
     )
 
 
-def test_ac8_html_renders_chunks_on_search_tab():
-    """Search tab must prefer r.chunks with Chunk match labels when present."""
+def test_ac8_html_renders_flat_chunk_rows():
+    """Search tab must render one card per flat chunk row with capped display."""
     with open(INDEX_HTML) as f:
         src = f.read()
-    assert re.search(r"r\.chunks", src), (
-        "index.html Search tab must read r.chunks from search results"
+    assert re.search(r"renderFlatChunkCard", src), (
+        "index.html Search tab must render flat chunk result cards"
     )
-    assert "Chunk match" in src, (
-        "index.html must label stacked chunk hits as 'Chunk match'"
+    assert re.search(r"DISPLAY_CAP\s*=\s*20", src), (
+        "index.html must cap visible chunk rows at 20"
     )
-    assert re.search(r"renderChunkBlock", src), (
-        "index.html must render chunk blocks via renderChunkBlock"
+    assert "View full article" in src, (
+        "Each flat chunk card must include View full article"
     )
 
 

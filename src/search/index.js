@@ -7,8 +7,8 @@
  *   • Environment variable: SEARCH_MAX_CHUNKS (integer, default 3)
  *   • Can also be overridden per-call via the maxChunksPerArticle parameter
  *
- * Response shape per article:
- *   { id, headline, attachment_url, score, chunks: [{ text, score }, ...], ... }
+ * Response shape per result (flat — one row per chunk, sorted by score):
+ *   { id, article_id, chunk_index, headline, text, score, passages, ... }
  *
  * Supported backends (selected via DB_BACKEND / MILVUS_HOST):
  *   postgres  — PgVectorStore (pgvector cosine similarity)
@@ -21,6 +21,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createEmbedder } from "../embeddings/index.js";
 import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
+import { flattenChunkResults } from "./flattenResults.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -333,9 +334,10 @@ async function _searchFile(query, k, maxChunks) {
         attachment_url_type: resolveAttachmentUrlType(bestChunk.attachment_url),
         best_passage,
         passages,
-        chunks: chunks.map((c) => ({
+        chunks: chunks.map((c, i) => ({
           text: c.details.replace(/\s+/g, " ").trim(),
           score: parseFloat(c.score.toFixed(4)),
+          chunk_index: c.chunk_index ?? i,
         })),
       };
     }),
@@ -404,9 +406,10 @@ async function _searchPostgres(query, k, maxChunks) {
         attachment_url_type: resolveAttachmentUrlType(bestChunk.attachment_url),
         best_passage,
         passages,
-        chunks: chunks.map((c) => ({
+        chunks: chunks.map((c, i) => ({
           text: (c.details || "").replace(/\s+/g, " ").trim(),
           score: parseFloat(c.score.toFixed(4)),
+          chunk_index: c.chunk_index ?? i,
         })),
       };
     }),
@@ -424,15 +427,17 @@ async function _searchPostgres(query, k, maxChunks) {
  * @param {number} [k=10] - Maximum number of articles to return.
  * @param {number|null} [maxChunksPerArticle] - Cap on chunk hits per article.
  *   Defaults to SEARCH_MAX_CHUNKS env var, then DEFAULT_MAX_CHUNKS (3).
- * @returns {Promise<Array>} Ranked articles with chunk hits.
+ * @returns {Promise<Array>} Ranked chunk rows (flat), sorted by score globally.
  */
 export async function searchDocuments(query, k = 10, maxChunksPerArticle = null) {
   const maxChunks = getMaxChunks(maxChunksPerArticle);
+  let grouped;
   if (usePostgres()) {
-    return _searchPostgres(query, k, maxChunks);
+    grouped = await _searchPostgres(query, k, maxChunks);
+  } else if (useMilvus()) {
+    grouped = await _searchMilvus(query, k, maxChunks);
+  } else {
+    grouped = await _searchFile(query, k, maxChunks);
   }
-  if (useMilvus()) {
-    return _searchMilvus(query, k, maxChunks);
-  }
-  return _searchFile(query, k, maxChunks);
+  return flattenChunkResults(grouped);
 }
