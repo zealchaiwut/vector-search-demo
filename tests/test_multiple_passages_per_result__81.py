@@ -276,8 +276,11 @@ def test_ac5_dedup_function_in_source():
     """search.js must contain a passage deduplication function."""
     with open(SEARCH_JS) as f:
         src = f.read()
-    assert re.search(r"deduplicatePassages|dedup|OFFSET_PROXIMITY|start_offset.*seen|seen.*start_offset", src), (
-        "search.js must contain offset-based deduplication logic for passages"
+    assert re.search(
+        r"deduplicatePassages|passagesSimilar|CHUNK_OFFSET_BASE|withChunkScopedOffsets",
+        src,
+    ), (
+        "search.js must contain deduplication logic for overlapping chunk passages"
     )
 
 
@@ -390,6 +393,21 @@ def test_ac8_html_renders_passage_blocks():
     # The passage rendering should reference r.passages or similar
     assert "passages" in src and "passage" in src.lower(), (
         "index.html must reference passages array in rendering logic"
+    )
+
+
+def test_ac8_html_renders_chunks_on_search_tab():
+    """Search tab must prefer r.chunks with Chunk match labels when present."""
+    with open(INDEX_HTML) as f:
+        src = f.read()
+    assert re.search(r"r\.chunks", src), (
+        "index.html Search tab must read r.chunks from search results"
+    )
+    assert "Chunk match" in src, (
+        "index.html must label stacked chunk hits as 'Chunk match'"
+    )
+    assert re.search(r"renderChunkBlock", src), (
+        "index.html must render chunk blocks via renderChunkBlock"
     )
 
 
