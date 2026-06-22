@@ -5,7 +5,8 @@
  *   GET /search?q=<query>    — returns ranked result cards
  *   GET /download/:articleId — returns the source article as a file download
  *   GET /api/config          — public runtime config (ENV label for UI)
- *   GET /uploads/:filename   — serve uploaded PDF files
+ *   POST /api/upload-pdf     — upload PDF or Word (.docx), extract text, return article JSON
+ *   GET /uploads/:filename   — serve uploaded PDF/DOCX files
  *   GET /                    — serves public/index.html
  *   GET /static/*            — serves files from public/
  */
@@ -23,8 +24,21 @@ import { validateArticle, validateArticleId, getArticleIdError } from "./data/ar
 import { chunkDocument } from "./data/chunker.js";
 import { usePostgres } from "./data/backend.js";
 import { extractPdfText } from "./pdf/index.js";
+import { extractDocxText } from "./docx/index.js";
 import { mapPdfToArticle } from "./pdf/mapper.js";
 import { TesseractOcr } from "./ocr/index.js";
+
+const UPLOAD_MIME = {
+  ".pdf": "application/pdf",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+
+async function extractUploadText(buffer, filename, ocr) {
+  const ext = extname(filename).toLowerCase();
+  if (ext === ".pdf") return extractPdfText(buffer, ocr);
+  if (ext === ".docx") return extractDocxText(buffer);
+  throw new Error("Unsupported file type. Upload PDF or Word (.docx).");
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -141,7 +155,7 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // POST /api/upload-pdf — receive PDF, extract text, return article JSON
+  // POST /api/upload-pdf — receive PDF or DOCX, extract text, return article JSON
   if (req.method === "POST" && pathname === "/api/upload-pdf") {
     const contentType = req.headers["content-type"] ?? "";
     const boundaryMatch = contentType.match(/boundary=([^\s;]+)/);
@@ -158,16 +172,21 @@ async function handleRequest(req, res) {
     const rawBody = Buffer.concat(chunks);
     const file = parseMultipartFile(rawBody, boundary);
     if (!file) {
-      jsonResponse(res, 400, { error: "No PDF file found in request" });
+      jsonResponse(res, 400, { error: "No file found in request" });
       return;
     }
     const safeName = file.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const fileExt = extname(safeName).toLowerCase();
+    if (fileExt !== ".pdf" && fileExt !== ".docx") {
+      jsonResponse(res, 400, { error: "Unsupported file type. Upload PDF or Word (.docx)." });
+      return;
+    }
     const uniqueName = `${randomUUID()}-${safeName}`;
     const filePath = join(UPLOADS_DIR, uniqueName);
     await writeFile(filePath, file.data);
     try {
       const ocr = new TesseractOcr();
-      const text = await extractPdfText(file.data, ocr);
+      const text = await extractUploadText(file.data, safeName, ocr);
       const attachment_url = `/uploads/${encodeURIComponent(uniqueName)}`;
       const articleMeta = mapPdfToArticle(text, { fileName: safeName, attachmentUrl: attachment_url });
       jsonResponse(res, 200, articleMeta);
@@ -177,7 +196,7 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // GET /uploads/:filename — serve stored PDF uploads
+  // GET /uploads/:filename — serve stored upload files
   if (req.method === "GET" && pathname.startsWith("/uploads/")) {
     const filename = decodeURIComponent(pathname.slice("/uploads/".length));
     const filePath = join(UPLOADS_DIR, filename);
@@ -186,8 +205,9 @@ async function handleRequest(req, res) {
       return;
     }
     const content = await readFile(filePath);
+    const uploadMime = UPLOAD_MIME[extname(filename).toLowerCase()] ?? "application/octet-stream";
     res.writeHead(200, {
-      "Content-Type": "application/pdf",
+      "Content-Type": uploadMime,
       "Content-Length": content.length,
       "Access-Control-Allow-Origin": "*",
     });
