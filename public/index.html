@@ -1019,6 +1019,7 @@
     padding: 0 2px;
     font-weight: 600;
   }
+  .cmp-kw-snippet strong.kw,
   .cmp-card-snippet strong.kw {
     background: #bbf7d0;
     border-radius: 3px;
@@ -1031,6 +1032,9 @@
     font-size: 12.5px;
     line-height: 1.5;
     color: #166534;
+  }
+  .cmp-kw-snippet .ctx {
+    color: #4b5563;
   }
   .cmp-card-snippet .passage-label {
     font-size: 11px;
@@ -1067,7 +1071,7 @@
   <div class="admin-shell" id="admin-shell" role="tabpanel" aria-labelledby="tab-admin" hidden>
     <nav class="admin-tabs" role="tablist" aria-label="Admin sections">
       <button class="admin-tab" id="tab-add" role="tab" aria-selected="false" aria-controls="panel-add" type="button">Add Article</button>
-      <button class="admin-tab" id="tab-upload-pdf" role="tab" aria-selected="false" aria-controls="panel-upload-pdf" type="button">Upload PDF</button>
+      <button class="admin-tab" id="tab-upload-pdf" role="tab" aria-selected="false" aria-controls="panel-upload-pdf" type="button">Upload Document</button>
       <button class="admin-tab" id="tab-bulk" role="tab" aria-selected="false" aria-controls="panel-bulk" type="button">Bulk Import</button>
       <button class="admin-tab" id="tab-articles" role="tab" aria-selected="false" aria-controls="panel-articles" type="button">All Articles</button>
     </nav>
@@ -1143,12 +1147,12 @@
   </section>
 
   <section class="panel upload-pdf-section" id="panel-upload-pdf" role="tabpanel" aria-labelledby="tab-upload-pdf" hidden>
-    <p>Select a Thai-language <strong>PDF</strong> file. The server will extract and map the text into article fields you can review before saving.</p>
+    <p>Select a <strong>PDF</strong> or Word <strong>.docx</strong> file. The server will extract and map the text into article fields you can review before saving.</p>
     <div class="pdf-dropzone" id="pdf-dropzone">
       <label class="pdf-dropzone-label" for="pdf-file">
-        <strong>Choose PDF</strong> or drop it here
+        <strong>Choose file</strong> or drop it here
       </label>
-      <input type="file" id="pdf-file" accept=".pdf,application/pdf" aria-label="Select PDF file for upload" />
+      <input type="file" id="pdf-file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="Select PDF or Word document for upload" />
       <div class="pdf-filename" id="pdf-filename"></div>
     </div>
     <div class="pdf-actions">
@@ -1156,7 +1160,7 @@
     </div>
     <div class="pdf-loading" id="pdf-loading" aria-live="polite">
       <div class="pdf-progress-label">
-        <span id="pdf-progress-phase">Uploading PDF…</span>
+        <span id="pdf-progress-phase">Uploading file…</span>
         <span id="pdf-progress-pct">0%</span>
       </div>
       <div class="pdf-progress-track" id="pdf-progress-track">
@@ -1176,7 +1180,7 @@
       <div class="field">
         <label for="pdf-attachment-url">Attachment URL</label>
         <input id="pdf-attachment-url" name="attachment_url" type="text" placeholder="/uploads/..." readonly />
-        <a id="pdf-attachment-link" href="#" target="_blank" rel="noopener" style="display:none">Open PDF in new tab ↗</a>
+        <a id="pdf-attachment-link" href="#" target="_blank" rel="noopener" style="display:none">Open attachment ↗</a>
       </div>
       <button class="btn-pdf-confirm" id="pdf-confirm-btn" type="submit">Confirm &amp; Create Article</button>
     </form>
@@ -1433,9 +1437,151 @@
     return escapedHtml.replace(re, '<strong class="qw">$&</strong>');
   }
 
+  // Max chunk rows shown per search/compare (API may return more).
+  const DISPLAY_CAP = 20;
+
+  function capResultRows(results, cap = DISPLAY_CAP) {
+    const rows = Array.isArray(results) ? results : [];
+    return { visible: rows.slice(0, cap), total: rows.length };
+  }
+
+  function formatResultStatus(total, visibleCount) {
+    if (total === 0) return "";
+    if (total > visibleCount) {
+      return `${visibleCount} of ${total} results`;
+    }
+    return `${total} result${total === 1 ? "" : "s"}`;
+  }
+
+  function formatRawScore(score) {
+    return typeof score === "number" ? `${Math.round(score * 100)}%` : "";
+  }
+
+  function chunkSnippetText(r) {
+    const passage = r.passages?.[0];
+    const text =
+      (passage && passage.text) ||
+      r.text ||
+      (typeof r.best_passage === "string" ? r.best_passage : r.best_passage?.text) ||
+      r.details ||
+      "";
+    return text.length > 420 ? `${text.slice(0, 420)}…` : text;
+  }
+
+  function viewFullPassageText(r) {
+    const passage = r.passages?.[0];
+    return (
+      (passage && passage.text) ||
+      r.text ||
+      (typeof r.best_passage === "string" ? r.best_passage : r.best_passage?.text) ||
+      ""
+    );
+  }
+
+  function findQueryInText(text, query) {
+    const hay = String(text ?? "");
+    const needle = String(query ?? "").trim();
+    if (!needle) return -1;
+    const idx = hay.toLocaleLowerCase("th-TH").indexOf(needle.toLocaleLowerCase("th-TH"));
+    if (idx !== -1) return { idx, len: needle.length };
+    for (const word of needle.split(/\s+/).filter(Boolean)) {
+      const wIdx = hay.toLocaleLowerCase("th-TH").indexOf(word.toLocaleLowerCase("th-TH"));
+      if (wIdx !== -1) return { idx: wIdx, len: word.length };
+    }
+    return -1;
+  }
+
+  /** Snippet centered on the keyword match with nearby context (Compare keyword column). */
+  function keywordSnippetHtml(r, query) {
+    const passage = r.passages?.[0];
+    if (passage?.html) return passage.html;
+
+    const text = r.text || passage?.text || r.details || "";
+    const hit = findQueryInText(text, query);
+    if (hit === -1) {
+      const slice = text.slice(0, 220);
+      return `<span class="ctx">${highlightPassage(slice, query)}</span>`;
+    }
+
+    const ctx = 80;
+    const start = Math.max(0, hit.idx - ctx);
+    const end = Math.min(text.length, hit.idx + hit.len + ctx);
+    const slice = text.slice(start, end);
+    const rel = findQueryInText(slice, query);
+    const prefix = start > 0 ? "…" : "";
+    const suffix = end < text.length ? "…" : "";
+    if (rel === -1) {
+      return `${prefix}${highlightPassage(slice, query)}${suffix}`;
+    }
+    const before = escapeHtml(slice.slice(0, rel.idx));
+    const match = escapeHtml(slice.slice(rel.idx, rel.idx + rel.len));
+    const after = escapeHtml(slice.slice(rel.idx + rel.len));
+    return `${prefix}${before}<strong class="kw">${match}</strong>${after}${suffix}`;
+  }
+
   // Escape a raw passage and light-bold the query words inside it.
   function highlightPassage(text, query) {
     return boldQueryWords(escapeHtml(text), query);
+  }
+
+  function renderFlatChunkCard(r, query, topScore, { compact = false, isKeyword = false } = {}) {
+    const headline = r.headline ?? "(untitled)";
+    const articleId = r.article_id ?? r.id ?? "";
+    const attachmentUrl = r.attachment_url ?? null;
+    const relPct = topScore > 0 ? Math.round(r.score * 100 / topScore) : 0;
+    const rawScore = formatRawScore(r.score);
+    const snippet = chunkSnippetText(r);
+    const fullPassage = viewFullPassageText(r);
+    const bodyHtml = isKeyword
+      ? keywordSnippetHtml(r, query)
+      : `<mark>${highlightPassage(snippet, query)}</mark>`;
+
+    if (compact && isKeyword) {
+      return `
+        <article class="cmp-card">
+          <div class="card-head">
+            <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
+            <div class="passage-label">Keyword match</div>
+          </div>
+          <p class="cmp-kw-snippet">${bodyHtml}</p>
+          <button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(fullPassage)}">View full article ↗</button>
+        </article>`;
+    }
+
+    if (compact) {
+      return `
+        <article class="cmp-card">
+          <div class="card-head">
+            <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
+            <div class="rel">
+              <div class="bar"><span data-pct="${relPct}"></span></div>
+              <div class="label">relevance ${relPct}% · ${rawScore}</div>
+            </div>
+          </div>
+          <p class="passage-text">${bodyHtml}</p>
+          <button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(fullPassage)}">View full article ↗</button>
+          <div class="cmp-card-score">score: ${typeof r.score === "number" ? r.score.toFixed(4) : ""}</div>
+        </article>`;
+    }
+
+    return `
+        <article class="card">
+          <div class="card-head">
+            <h2>${escapeHtml(headline)}</h2>
+            <div class="rel">
+              <div class="bar"><span data-pct="${relPct}"></span></div>
+              <div class="label">relevance ${relPct}% · ${rawScore}</div>
+            </div>
+          </div>
+          <div class="passage">
+            <p class="passage-text">${bodyHtml}</p>
+            <button type="button" class="view-full" data-id="${escapeHtml(articleId)}" data-passage="${escapeHtml(fullPassage)}">View full article ↗</button>
+          </div>
+          <div class="card-foot">
+            <span class="docid">${escapeHtml(articleId)}</span>
+            ${attachmentUrl ? `<a class="open-link" href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener">Open</a>` : ""}
+          </div>
+        </article>`;
   }
 
   function renderPassageBlock(p, articleId, query, isFirst) {
@@ -1458,40 +1604,18 @@
   }
 
   function renderResults(results, query) {
-    const top = Math.max(...results.map(r => r.score), 0);
-    resultsEl.innerHTML = results.map(r => {
-      const pct = top > 0 ? Math.round(r.score * 100 / top) : 0;
-      const headline      = r.headline ?? "(untitled)";
-      const details       = r.details ?? "";
-      const articleId     = r.id ?? "";
-      const attachmentUrl = r.attachment_url ?? null;
-      // Use passages array if present; fall back to best_passage for backward compat
-      const passages      = Array.isArray(r.passages) && r.passages.length > 0
-        ? r.passages
-        : (r.best_passage ? [r.best_passage] : []);
-      const passageBlocks = passages.map((p, i) => renderPassageBlock(p, articleId, query, i === 0)).join("");
-      return `
-        <article class="card">
-          <div class="card-head">
-            <h2>${escapeHtml(headline)}</h2>
-            <div class="rel">
-              <div class="bar"><span data-pct="${pct}"></span></div>
-              <div class="label">relevance ${pct}%</div>
-            </div>
-          </div>
-          <p class="doc-text">${escapeHtml(details)}</p>${passageBlocks}
-          <div class="card-foot">
-            <span class="docid">${escapeHtml(articleId)}</span>
-            ${attachmentUrl ? `<a class="open-link" href="${escapeHtml(attachmentUrl)}" target="_blank" rel="noopener">Open</a>` : ""}
-          </div>
-        </article>`;
-    }).join("");
+    const { visible, total } = capResultRows(results);
+    const top = Math.max(...visible.map((r) => r.score), 0);
+    resultsEl.innerHTML = visible
+      .map((r) => renderFlatChunkCard(r, query, top))
+      .join("");
 
     requestAnimationFrame(() => {
-      document.querySelectorAll(".rel .bar > span").forEach(el => {
+      document.querySelectorAll(".rel .bar > span").forEach((el) => {
         el.style.width = (el.dataset.pct || 0) + "%";
       });
     });
+    return total;
   }
 
   async function doSearch(query) {
@@ -1505,11 +1629,13 @@
       if (!resp.ok) throw new Error(`Server returned ${resp.status} ${resp.statusText}`);
       const data = await resp.json();
       const results = Array.isArray(data.results) ? data.results : [];
-      statusEl.textContent = results.length ? `${results.length} result${results.length === 1 ? "" : "s"}` : "";
       if (results.length === 0) {
+        statusEl.textContent = "";
         renderEmpty();
       } else {
-        renderResults(results, query);
+        const total = renderResults(results, query);
+        const visibleCount = Math.min(results.length, DISPLAY_CAP);
+        statusEl.textContent = formatResultStatus(total, visibleCount);
       }
     } catch (err) {
       statusEl.textContent = "";
@@ -2010,56 +2136,8 @@
   const compareKeywordEl  = document.getElementById("compare-keyword");
   const compareColumns    = document.getElementById("compare-columns");
 
-  function renderCmpCard(r, isKeyword, query) {
-    const headline = r.headline ?? "(untitled)";
-    const score    = typeof r.score === "number" ? r.score.toFixed(4) : "";
-
-    if (isKeyword) {
-      const passages = Array.isArray(r.passages) && r.passages.length > 0
-        ? r.passages
-        : (r.best_passage
-          ? [{ text: r.best_passage, html: escapeHtml(r.best_passage), score: r.score }]
-          : []);
-      const passageBlocks = passages.map((p, i) => {
-        const label = passages.length > 1 ? `Chunk match ${i + 1}` : "Keyword match";
-        const scoreStr = typeof p.score === "number" ? ` · ${p.score.toFixed(4)}` : "";
-        const inner = p.html ?? escapeHtml(p.text ?? "");
-        return `
-          <div class="cmp-card-snippet">
-            <div class="passage-label">${label}${scoreStr}</div>
-            <p class="cmp-kw-snippet">${inner}</p>
-          </div>`;
-      }).join("");
-      return `
-        <article class="cmp-card">
-          <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
-          ${passageBlocks}
-          <div class="cmp-card-score">score: ${score}</div>
-        </article>`;
-    } else {
-      const passages = Array.isArray(r.passages) && r.passages.length > 0
-        ? r.passages
-        : (r.best_passage ? [r.best_passage] : []);
-      const passageBlocks = passages.map((p, i) => {
-        const passageText = p && p.text ? p.text : "";
-        if (!passageText) return "";
-        const label = passages.length > 1 ? `Closest passage ${i + 1}` : "Closest passage";
-        const scoreStr = typeof p.score === "number" ? ` · ${Math.round(p.score * 100)}%` : "";
-        return `
-          <div class="passage">
-            <div class="passage-label">${label}${scoreStr}</div>
-            <p class="passage-text"><mark>${highlightPassage(passageText, query)}</mark></p>
-          </div>`;
-      }).join("");
-      const details = (r.details ?? "").slice(0, 200);
-      return `
-        <article class="cmp-card">
-          <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
-          <p class="cmp-card-details">${escapeHtml(details)}</p>
-          ${passageBlocks}
-          <div class="cmp-card-score">score: ${score}</div>
-        </article>`;
-    }
+  function renderCmpCard(r, isKeyword, query, topScore) {
+    return renderFlatChunkCard(r, query, topScore, { compact: true, isKeyword });
   }
 
   async function doCompare(query) {
@@ -2082,17 +2160,27 @@
       const semResults = Array.isArray(semData.results) ? semData.results : [];
       const kwResults  = Array.isArray(kwData.results)  ? kwData.results  : [];
 
-      compareStatusEl.textContent =
-        `Semantic: ${semResults.length} result${semResults.length === 1 ? "" : "s"}` +
-        ` · Keyword: ${kwResults.length} result${kwResults.length === 1 ? "" : "s"}`;
+      const semCap = capResultRows(semResults);
+      const kwCap = capResultRows(kwResults);
+      const semTop = Math.max(...semCap.visible.map((r) => r.score), 0);
 
-      compareSemanticEl.innerHTML = semResults.length
-        ? semResults.map((r) => renderCmpCard(r, false, query)).join("")
+      compareStatusEl.textContent =
+        `Semantic: ${formatResultStatus(semCap.total, semCap.visible.length)}` +
+        ` · Keyword: ${formatResultStatus(kwCap.total, kwCap.visible.length)}`;
+
+      compareSemanticEl.innerHTML = semCap.visible.length
+        ? semCap.visible.map((r) => renderCmpCard(r, false, query, semTop)).join("")
         : '<div class="empty">No semantic results.</div>';
 
-      compareKeywordEl.innerHTML = kwResults.length
-        ? kwResults.map((r) => renderCmpCard(r, true, query)).join("")
+      compareKeywordEl.innerHTML = kwCap.visible.length
+        ? kwCap.visible.map((r) => renderCmpCard(r, true, query, 0)).join("")
         : '<div class="empty">No keyword results.</div>';
+
+      requestAnimationFrame(() => {
+        compareColumns.querySelectorAll(".rel .bar > span").forEach((el) => {
+          el.style.width = (el.dataset.pct || 0) + "%";
+        });
+      });
     } catch (err) {
       compareStatusEl.textContent = "";
       compareSemanticEl.innerHTML =
@@ -2112,6 +2200,12 @@
       const query = compareInput.value.trim();
       if (query) doCompare(query);
     }
+  });
+
+  compareColumns.addEventListener("click", (e) => {
+    const btnEl = e.target.closest(".view-full");
+    if (!btnEl) return;
+    openFull(btnEl.dataset.id, btnEl.dataset.passage || "");
   });
 
   // ---------------------------------------------------------------------------
@@ -2157,7 +2251,11 @@
     URL.revokeObjectURL(url);
   });
 
-  bulkDropzone.addEventListener("click", () => bulkFileInput.click());
+  // Label[for] already opens the picker; skip dropzone click to avoid double dialogs.
+  bulkDropzone.addEventListener("click", (e) => {
+    if (e.target.closest('label[for="bulk-file"]')) return;
+    bulkFileInput.click();
+  });
 
   bulkDropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
@@ -2207,7 +2305,11 @@
   }
 
   bulkUploadBtn.addEventListener("click", async () => {
-    if (!selectedBulkFile) return;
+    if (!selectedBulkFile) {
+      bulkFeedback.className = "bulk-feedback error";
+      bulkFeedback.textContent = "Choose a file first.";
+      return;
+    }
 
     bulkUploadBtn.disabled = true;
     bulkFeedback.className = "bulk-feedback";
@@ -2299,7 +2401,11 @@
 
   let selectedPdfFile = null;
 
-  pdfDropzone.addEventListener("click", () => pdfFileInput.click());
+  // Label[for] already opens the picker; skip dropzone click to avoid double dialogs.
+  pdfDropzone.addEventListener("click", (e) => {
+    if (e.target.closest('label[for="pdf-file"]')) return;
+    pdfFileInput.click();
+  });
   pdfDropzone.addEventListener("dragover", (e) => {
     e.preventDefault();
     pdfDropzone.classList.add("drag-over");
@@ -2316,10 +2422,12 @@
     if (pdfFileInput.files[0]) handlePdfFileSelected(pdfFileInput.files[0]);
   });
 
+  const ALLOWED_UPLOAD_EXT = new Set(["pdf", "docx"]);
+
   function handlePdfFileSelected(file) {
     const ext = file.name.split(".").pop().toLowerCase();
-    if (ext !== "pdf") {
-      showPdfFeedback("error", "Please select a PDF file.");
+    if (!ALLOWED_UPLOAD_EXT.has(ext)) {
+      showPdfFeedback("error", "Please select a PDF or Word (.docx) file.");
       pdfUploadBtn.disabled = true;
       selectedPdfFile = null;
       pdfFilename.textContent = "";
@@ -2358,13 +2466,16 @@
   }
 
   pdfUploadBtn.addEventListener("click", () => {
-    if (!selectedPdfFile) return;
+    if (!selectedPdfFile) {
+      showPdfFeedback("error", "Choose a PDF or Word (.docx) file first.");
+      return;
+    }
 
     pdfUploadBtn.disabled = true;
     pdfFeedback.className = "pdf-feedback";
     pdfFeedback.textContent = "";
     pdfResultForm.className = "pdf-result-form";
-    setPdfProgress("Uploading PDF…", 0, false);
+    setPdfProgress("Uploading file…", 0, false);
     pdfLoading.className = "pdf-loading visible";
 
     const formData = new FormData();
@@ -2378,7 +2489,7 @@
       if (!e.lengthComputable) return;
       const pct = (e.loaded / e.total) * 100;
       if (pct >= 100) setPdfProgress("Extracting text…", 0, true);
-      else setPdfProgress("Uploading PDF…", pct, false);
+      else setPdfProgress("Uploading file…", pct, false);
     });
     // Upload finished, server is now extracting (no byte progress available).
     xhr.upload.addEventListener("load", () => setPdfProgress("Extracting text…", 0, true));

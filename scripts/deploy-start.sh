@@ -95,6 +95,20 @@ else
   fi
 fi
 
+
+echo "[deploy-start] installing dependencies (npm ci)..."
+if [ -f "$ROOT/package-lock.json" ]; then
+  if ! npm ci --omit=dev >> "$LOG_FILE" 2>&1; then
+    echo "ERROR: npm ci failed (see $LOG_FILE)" >&2
+    exit 1
+  fi
+else
+  if ! npm install --omit=dev >> "$LOG_FILE" 2>&1; then
+    echo "ERROR: npm install failed (see $LOG_FILE)" >&2
+    exit 1
+  fi
+fi
+
 # Prefer .env when present (extra config like EMBEDDING_MODEL); our exported
 # PORT/DB_BACKEND/DATABASE_URL/MILVUS_* still win — Node's --env-file does not
 # override variables already set in the environment.

@@ -25,16 +25,19 @@ interface Passage {
 
 interface SearchResult {
   id: string;
+  article_id?: string;
+  chunk_index?: number;
   headline: string;
   details: string;
+  text?: string;
   score: number;
   attachment_url: string | null;
   /** "external" for http(s) URLs, "local" for /download/ paths, null when no attachment */
   attachment_url_type: "external" | "local" | null;
   best_passage: Passage;
-  /** All matching chunk passages for this article, sorted by score descending. */
+  /** Matching chunk passage(s) for this row. */
   passages: Passage[];
-  chunks: { text: string; score: number }[];
+  chunks: { text: string; score: number; chunk_index?: number }[];
 }
 
 export async function createServer() {
@@ -53,7 +56,10 @@ export async function createServer() {
       if (!q) {
         return reply.send({ results: [] as SearchResult[] });
       }
-      const results: SearchResult[] = await searchDocuments(q, Number.isFinite(k) ? k : 10);
+      const results = (await searchDocuments(
+        q,
+        Number.isFinite(k) ? k : 10,
+      )) as SearchResult[];
       return reply.send({ results });
     }
   );

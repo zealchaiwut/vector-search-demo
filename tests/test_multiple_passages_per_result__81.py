@@ -276,8 +276,11 @@ def test_ac5_dedup_function_in_source():
     """search.js must contain a passage deduplication function."""
     with open(SEARCH_JS) as f:
         src = f.read()
-    assert re.search(r"deduplicatePassages|dedup|OFFSET_PROXIMITY|start_offset.*seen|seen.*start_offset", src), (
-        "search.js must contain offset-based deduplication logic for passages"
+    assert re.search(
+        r"deduplicatePassages|passagesSimilar|CHUNK_OFFSET_BASE|withChunkScopedOffsets",
+        src,
+    ), (
+        "search.js must contain deduplication logic for overlapping chunk passages"
     )
 
 
@@ -390,6 +393,21 @@ def test_ac8_html_renders_passage_blocks():
     # The passage rendering should reference r.passages or similar
     assert "passages" in src and "passage" in src.lower(), (
         "index.html must reference passages array in rendering logic"
+    )
+
+
+def test_ac8_html_renders_flat_chunk_rows():
+    """Search tab must render one card per flat chunk row with capped display."""
+    with open(INDEX_HTML) as f:
+        src = f.read()
+    assert re.search(r"renderFlatChunkCard", src), (
+        "index.html Search tab must render flat chunk result cards"
+    )
+    assert re.search(r"DISPLAY_CAP\s*=\s*20", src), (
+        "index.html must cap visible chunk rows at 20"
+    )
+    assert "View full article" in src, (
+        "Each flat chunk card must include View full article"
     )
 
 
