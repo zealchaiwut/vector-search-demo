@@ -252,14 +252,14 @@ def test_ac7_keyword_highlighting_in_compare():
 
 
 def test_ac7_compare_keyword_uses_passages_array():
-    """Compare keyword column must render stacked passages from the API."""
+    """Compare keyword column must render match snippets from passage data."""
     with open(INDEX_HTML) as f:
         src = f.read()
-    assert re.search(r"isKeyword[\s\S]*?r\.passages", src), (
-        "Compare keyword rendering must iterate r.passages for multi-chunk keyword hits"
+    assert re.search(r"keywordSnippetHtml|r\.passages", src), (
+        "Compare keyword rendering must use passage snippets for keyword hits"
     )
-    assert re.search(r"cmp-kw-snippet|class=\"kw\"", src), (
-        "Compare keyword side must render FTS-matched term highlights (kw class)"
+    assert re.search(r"cmp-kw-snippet|class=\"kw\"|strong\.kw", src), (
+        "Compare keyword side must render matched term highlights (kw class)"
     )
 
 

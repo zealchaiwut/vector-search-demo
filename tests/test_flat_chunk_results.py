@@ -117,3 +117,16 @@ def test_ui_view_full_on_flat_chunk_cards():
     assert src.count("View full article") >= 2, (
         "Flat chunk cards must include View full article on search and compare paths"
     )
+
+
+def test_compare_keyword_uses_match_snippet_not_relevance_bar():
+    """Keyword column shows centered match snippet, not semantic relevance bar."""
+    with open(INDEX_HTML) as f:
+        src = f.read()
+    assert "keywordSnippetHtml" in src, "Compare keyword must build centered match snippets"
+    assert re.search(r"compact && isKeyword[\s\S]*?Keyword match", src), (
+        "Keyword cards must label Keyword match instead of relevance %"
+    )
+    assert re.search(r"cmp-kw-snippet strong\.kw", src), (
+        "Keyword snippet CSS must style matched terms"
+    )

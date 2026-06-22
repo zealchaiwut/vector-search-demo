@@ -167,15 +167,19 @@ async function searchExactFts(store, query, k) {
   );
 
   const rows = result.rows.map((row) => {
+    const body = `${row.headline ?? ""} ${row.details ?? ""}`.trim();
     const html = sanitizeHeadlineHtml(row.snippet);
+    const headlineText = stripHtml(row.snippet);
+    const hasQuery = findMatchIndex(body, query) !== -1;
+    const excerpt = hasQuery ? excerptWithHighlight(body, query) : { text: headlineText, html };
     return {
       id: row.id,
       headline: row.headline,
       attachment_url: row.attachment_url,
       chunk_index: row.chunk_index,
       details: row.details,
-      text: stripHtml(row.snippet),
-      html,
+      text: excerpt.text,
+      html: excerpt.html || html,
       score: parseFloat(row.score),
     };
   });
@@ -204,8 +208,8 @@ async function searchExactSubstring(store, query, k) {
   );
 
   const rows = result.rows.map((row) => {
-    const body = `${row.headline ?? ""} ${row.details ?? ""}`;
-    const { text, html } = excerptWithHighlight(row.details ?? body, query);
+    const body = `${row.headline ?? ""} ${row.details ?? ""}`.trim();
+    const { text, html } = excerptWithHighlight(body, query);
     return {
       id: row.id,
       headline: row.headline,
@@ -214,7 +218,7 @@ async function searchExactSubstring(store, query, k) {
       details: row.details,
       text,
       html,
-      score: substringScore(row.details ?? body, query),
+      score: substringScore(body, query),
     };
   });
 
