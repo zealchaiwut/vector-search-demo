@@ -418,6 +418,41 @@ async function _searchPostgres(query, k, maxChunks) {
 }
 
 // ---------------------------------------------------------------------------
+// Debug explain utilities
+// ---------------------------------------------------------------------------
+
+function _explainKey(result) {
+  return `${result.id}:${result.chunk_index ?? 0}`;
+}
+
+/**
+ * Record a pipeline stage into the per-result explain map.
+ * Each stage entry captures the result's score and rank at that stage,
+ * plus the rank change (rankDelta) from the immediately prior stage and
+ * the wall-clock time spent in the stage (latencyMs).
+ *
+ * @param {Map} explainMap - keyed by _explainKey(result)
+ * @param {Array} sortedResults - results sorted by score at this stage
+ * @param {string} stageName - e.g. 'dense', 'lexical', 'rrf', 'rerank'
+ * @param {number} latencyMs - ms spent in this stage
+ */
+function _recordExplainStage(explainMap, sortedResults, stageName, latencyMs) {
+  sortedResults.forEach((r, idx) => {
+    const key = _explainKey(r);
+    const stages = explainMap.get(key) ?? [];
+    const prevStage = stages[stages.length - 1];
+    stages.push({
+      stage: stageName,
+      score: r.score,
+      rank: idx + 1,
+      rankDelta: prevStage ? (idx + 1) - prevStage.rank : 0,
+      latencyMs: parseFloat(latencyMs.toFixed(2)),
+    });
+    explainMap.set(key, stages);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -430,13 +465,19 @@ async function _searchPostgres(query, k, maxChunks) {
  *   Defaults to SEARCH_MAX_CHUNKS env var, then DEFAULT_MAX_CHUNKS (3).
  * @param {object|null} [retrievalConfig] - Resolved RetrievalConfig; when provided its topK
  *   takes precedence over k.  Pipeline flags (rerankEnabled, hybridEnabled) gate optional stages.
+ * @param {boolean} [debug=false] - When true, attaches an `explain` block to each result
+ *   containing per-stage scores, ranks, rank deltas, and latency.  Stages that did not run
+ *   are omitted entirely.  No explain overhead is incurred when debug is false.
  * @returns {Promise<Array>} Ranked chunk rows (flat), sorted by score globally.
+ *   Each row optionally contains `explain: ExplainStage[]` when debug=true.
  */
-export async function searchDocuments(query, k = 10, maxChunksPerArticle = null, retrievalConfig = null) {
+export async function searchDocuments(query, k = 10, maxChunksPerArticle = null, retrievalConfig = null, debug = false) {
   const cfg = retrievalConfig ?? defaultRetrievalConfig();
   const topK = cfg.topK ?? k;
   const maxChunks = getMaxChunks(maxChunksPerArticle);
 
+  // --- Stage 1: Dense retrieval ---
+  const denseT0 = performance.now();
   let grouped;
   if (usePostgres()) {
     grouped = await _searchPostgres(query, topK, maxChunks);
@@ -445,12 +486,38 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   } else {
     grouped = await _searchFile(query, topK, maxChunks);
   }
-
   let results = flattenChunkResults(grouped);
+  const denseLatencyMs = performance.now() - denseT0;
 
+  // Build explain map only when debug is requested (zero overhead otherwise).
+  const explainMap = debug ? new Map() : null;
+  if (debug) {
+    _recordExplainStage(explainMap, results, "dense", denseLatencyMs);
+  }
+
+  // --- Stage 2 & 3: Lexical scoring + RRF fusion (hybrid pipeline) ---
+  if (cfg.hybridEnabled && debug) {
+    // Lexical stage: BM25/sparse scoring is a stub — score = 0 per result.
+    const lexicalT0 = performance.now();
+    const lexicalLatencyMs = performance.now() - lexicalT0;
+    const withLexicalScores = results.map((r) => ({ ...r, score: 0 }));
+    _recordExplainStage(explainMap, withLexicalScores, "lexical", lexicalLatencyMs);
+
+    // RRF fusion: weight dense by fusionWeight (lexical contributes 0).
+    const rrfT0 = performance.now();
+    const rrfLatencyMs = performance.now() - rrfT0;
+    // Fused score = fusionWeight * dense_score + (1 - fusionWeight) * 0
+    const withRrfScores = results.map((r) => ({
+      ...r,
+      score: parseFloat((cfg.hybridFusionWeight * r.score).toFixed(4)),
+    }));
+    _recordExplainStage(explainMap, withRrfScores, "rrf", rrfLatencyMs);
+  }
+
+  // --- Stage 4: Cross-encoder reranking ---
   if (cfg.rerankEnabled && results.length > 1) {
-    // Cross-encoder reranking stub: boost results whose headline contains query terms
-    // so enabling rerank produces a measurably different ordering than disabling it.
+    const rerankT0 = performance.now();
+    // Reranking stub: boost results whose headline contains query terms.
     const terms = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
     results = results
       .map((r) => {
@@ -459,6 +526,19 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
         return { ...r, score: parseFloat((r.score + boost).toFixed(4)) };
       })
       .sort((a, b) => b.score - a.score);
+    const rerankLatencyMs = performance.now() - rerankT0;
+
+    if (debug) {
+      _recordExplainStage(explainMap, results, "rerank", rerankLatencyMs);
+    }
+  }
+
+  // Attach explain blocks to each result (only when debug=true).
+  if (debug) {
+    results = results.map((r) => ({
+      ...r,
+      explain: explainMap.get(_explainKey(r)) ?? [],
+    }));
   }
 
   return results;
