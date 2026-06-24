@@ -19,7 +19,6 @@ import socket
 import subprocess
 import time
 
-import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEARCH_INDEX_JS = os.path.join(REPO_ROOT, "src", "search", "index.js")
