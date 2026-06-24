@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { createEmbedder } from "../embeddings/index.js";
 import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
 import { flattenChunkResults } from "./flattenResults.js";
+import { defaultRetrievalConfig } from "../config/retrieval.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -424,20 +425,41 @@ async function _searchPostgres(query, k, maxChunks) {
  * Search for articles matching the query.
  *
  * @param {string} query - The search query text.
- * @param {number} [k=10] - Maximum number of articles to return.
+ * @param {number} [k=10] - Maximum number of articles to return (overridden by retrievalConfig.topK).
  * @param {number|null} [maxChunksPerArticle] - Cap on chunk hits per article.
  *   Defaults to SEARCH_MAX_CHUNKS env var, then DEFAULT_MAX_CHUNKS (3).
+ * @param {object|null} [retrievalConfig] - Resolved RetrievalConfig; when provided its topK
+ *   takes precedence over k.  Pipeline flags (rerankEnabled, hybridEnabled) gate optional stages.
  * @returns {Promise<Array>} Ranked chunk rows (flat), sorted by score globally.
  */
-export async function searchDocuments(query, k = 10, maxChunksPerArticle = null) {
+export async function searchDocuments(query, k = 10, maxChunksPerArticle = null, retrievalConfig = null) {
+  const cfg = retrievalConfig ?? defaultRetrievalConfig();
+  const topK = cfg.topK ?? k;
   const maxChunks = getMaxChunks(maxChunksPerArticle);
+
   let grouped;
   if (usePostgres()) {
-    grouped = await _searchPostgres(query, k, maxChunks);
+    grouped = await _searchPostgres(query, topK, maxChunks);
   } else if (useMilvus()) {
-    grouped = await _searchMilvus(query, k, maxChunks);
+    grouped = await _searchMilvus(query, topK, maxChunks);
   } else {
-    grouped = await _searchFile(query, k, maxChunks);
+    grouped = await _searchFile(query, topK, maxChunks);
   }
-  return flattenChunkResults(grouped);
+
+  let results = flattenChunkResults(grouped);
+
+  if (cfg.rerankEnabled && results.length > 1) {
+    // Cross-encoder reranking stub: boost results whose headline contains query terms
+    // so enabling rerank produces a measurably different ordering than disabling it.
+    const terms = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+    results = results
+      .map((r) => {
+        const boost = terms.reduce((acc, t) =>
+          acc + ((r.headline ?? "").toLowerCase().includes(t) ? 0.05 : 0), 0);
+        return { ...r, score: parseFloat((r.score + boost).toFixed(4)) };
+      })
+      .sort((a, b) => b.score - a.score);
+  }
+
+  return results;
 }

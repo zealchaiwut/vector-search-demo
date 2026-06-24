@@ -18,6 +18,7 @@ import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { searchDocuments } from "./search/index.js";
+import { resolveRetrievalConfig, parseConfigOverrides } from "./config/retrieval.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
 import { validateArticle, validateArticleId, getArticleIdError } from "./data/articleValidation.js";
@@ -415,16 +416,59 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // GET /search?q=<query>
-  // Result shape: [{ id, headline, details, score, attachment_url, best_passage }]
-  if (req.method === "GET" && pathname === "/search") {
-    const q = url.searchParams.get("q") ?? "";
-    const k = parseInt(url.searchParams.get("k") ?? "10", 10);
-    const nParam = url.searchParams.get("n");
-    const n = nParam !== null ? parseInt(nParam, 10) : null;
+  // GET /search?q=<query>[&preset=<name>][&topK=N][&rerankEnabled=true|false][&...]
+  // POST /search  — same params via JSON body
+  // Result shape: { results: [...], config: RetrievalConfig }
+  if (pathname === "/search" && (req.method === "GET" || req.method === "POST")) {
+    let q = "";
+    let legacyK = null;
+    let legacyN = null;
+    let preset = null;
+    let overrideParams = {};
+
+    if (req.method === "GET") {
+      q = url.searchParams.get("q") ?? "";
+      legacyK = url.searchParams.get("k");
+      legacyN = url.searchParams.get("n");
+      preset = url.searchParams.get("preset") ?? null;
+      const rawParams = {};
+      for (const [key, val] of url.searchParams.entries()) {
+        if (key !== "q" && key !== "k" && key !== "n" && key !== "preset") {
+          rawParams[key] = val;
+        }
+      }
+      overrideParams = parseConfigOverrides(rawParams);
+      // Legacy k param maps to topK if not already provided
+      if (legacyK !== null && overrideParams.topK === undefined) {
+        overrideParams.topK = parseInt(legacyK, 10);
+      }
+    } else {
+      // POST: read JSON body
+      let rawBody = "";
+      for await (const chunk of req) rawBody += chunk;
+      let body = {};
+      try {
+        body = JSON.parse(rawBody);
+      } catch {
+        jsonResponse(res, 400, { error: "Invalid JSON body" });
+        return;
+      }
+      q = body.q ?? "";
+      preset = body.preset ?? null;
+      const { q: _q, preset: _p, ...rest } = body;
+      overrideParams = parseConfigOverrides(rest);
+    }
+
+    const { config: resolvedConfig, error: configError } = resolveRetrievalConfig(preset, overrideParams);
+    if (configError) {
+      jsonResponse(res, 400, { error: configError });
+      return;
+    }
+
+    const nParam = legacyN !== null ? parseInt(legacyN, 10) : null;
     try {
-      const results = await searchDocuments(q, k, n);
-      jsonResponse(res, 200, { results });
+      const results = await searchDocuments(q, resolvedConfig.topK, nParam, resolvedConfig);
+      jsonResponse(res, 200, { results, config: resolvedConfig });
     } catch (err) {
       console.error("[server] Search failed unexpectedly:", err?.message ?? err);
       jsonResponse(res, 502, { error: "Search service unavailable" });
