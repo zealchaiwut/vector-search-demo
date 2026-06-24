@@ -23,6 +23,23 @@ interface Passage {
   score: number;
 }
 
+/**
+ * A single pipeline stage entry in the debug explain block.
+ * Only present on results when the search request includes `debug: true`.
+ */
+interface ExplainStage {
+  /** Pipeline stage name: one of 'dense', 'lexical', 'rrf', 'rerank'. */
+  stage: "dense" | "lexical" | "rrf" | "rerank";
+  /** Score assigned to this result at this stage. */
+  score: number;
+  /** 1-indexed rank of this result at this stage. */
+  rank: number;
+  /** Change in rank compared to the immediately prior stage (0 for the first stage). */
+  rankDelta: number;
+  /** Wall-clock time in milliseconds consumed by this stage. */
+  latencyMs: number;
+}
+
 interface SearchResult {
   id: string;
   article_id?: string;
@@ -38,6 +55,11 @@ interface SearchResult {
   /** Matching chunk passage(s) for this row. */
   passages: Passage[];
   chunks: { text: string; score: number; chunk_index?: number }[];
+  /**
+   * Debug explain block — only present when the request includes `debug: true`.
+   * Contains one entry per pipeline stage that ran; stages that did not run are omitted.
+   */
+  explain?: ExplainStage[];
 }
 
 export async function createServer() {

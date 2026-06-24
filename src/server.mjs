@@ -416,14 +416,17 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // GET /search?q=<query>[&preset=<name>][&topK=N][&rerankEnabled=true|false][&...]
+  // GET /search?q=<query>[&preset=<name>][&topK=N][&rerankEnabled=true|false][&debug=true][&...]
   // POST /search  — same params via JSON body
-  // Result shape: { results: [...], config: RetrievalConfig }
+  // Normal result shape: { results: [...], config: RetrievalConfig }
+  // Debug result shape:  { results: [...], config: RetrievalConfig, activePreset: string|null }
+  //   Each result in debug mode also carries an `explain` block with per-stage score/rank/latency.
   if (pathname === "/search" && (req.method === "GET" || req.method === "POST")) {
     let q = "";
     let legacyK = null;
     let legacyN = null;
     let preset = null;
+    let debug = false;
     let overrideParams = {};
 
     if (req.method === "GET") {
@@ -431,9 +434,11 @@ async function handleRequest(req, res) {
       legacyK = url.searchParams.get("k");
       legacyN = url.searchParams.get("n");
       preset = url.searchParams.get("preset") ?? null;
+      const rawDebug = url.searchParams.get("debug");
+      debug = rawDebug === "true" || rawDebug === "1";
       const rawParams = {};
       for (const [key, val] of url.searchParams.entries()) {
-        if (key !== "q" && key !== "k" && key !== "n" && key !== "preset") {
+        if (key !== "q" && key !== "k" && key !== "n" && key !== "preset" && key !== "debug") {
           rawParams[key] = val;
         }
       }
@@ -455,7 +460,8 @@ async function handleRequest(req, res) {
       }
       q = body.q ?? "";
       preset = body.preset ?? null;
-      const { q: _q, preset: _p, ...rest } = body;
+      debug = body.debug === true || body.debug === "true";
+      const { q: _q, preset: _p, debug: _d, ...rest } = body;
       overrideParams = parseConfigOverrides(rest);
     }
 
@@ -467,8 +473,12 @@ async function handleRequest(req, res) {
 
     const nParam = legacyN !== null ? parseInt(legacyN, 10) : null;
     try {
-      const results = await searchDocuments(q, resolvedConfig.topK, nParam, resolvedConfig);
-      jsonResponse(res, 200, { results, config: resolvedConfig });
+      const results = await searchDocuments(q, resolvedConfig.topK, nParam, resolvedConfig, debug);
+      const responseBody = { results, config: resolvedConfig };
+      if (debug) {
+        responseBody.activePreset = preset;
+      }
+      jsonResponse(res, 200, responseBody);
     } catch (err) {
       console.error("[server] Search failed unexpectedly:", err?.message ?? err);
       jsonResponse(res, 502, { error: "Search service unavailable" });
