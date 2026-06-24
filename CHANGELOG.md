@@ -3,6 +3,14 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 12 (2026-06-24)
+
+- #130: Add configurable, per-request retrieval pipeline with presets
+- #131: Add debug explain mode to search API
+- #132: Expand Thai eval set and add nDCG and MRR metrics
+- #133: Add ablation runner for comparing retrieval presets
+- #134: Upgrade Compare Tab into Configuration Audit Tool
+
 ## Sprint 11 (2026-06-20)
 
 - #102: Chunk documents into overlapping vectors for semantic search (chunk defaults: 400 chars / 80 overlap; CHUNK_SIZE/CHUNK_OVERLAP env var overrides; listChunks API on all backends)
