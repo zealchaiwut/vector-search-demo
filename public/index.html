@@ -964,6 +964,49 @@
 
   /* Compare view */
   .compare-section { }
+
+  /* Preset selector row */
+  .compare-presets {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .compare-preset-field {
+    flex: 1;
+    min-width: 160px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .compare-preset-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .compare-preset-select {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--surface);
+    outline: 0;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+  }
+  .compare-preset-select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  /* Two-column compare grid */
   .compare-columns {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -982,7 +1025,21 @@
   }
   .compare-col-header.semantic { border-bottom-color: var(--accent); color: var(--accent); }
   .compare-col-header.keyword  { border-bottom-color: #16a34a; color: #16a34a; }
+  .compare-col-header.preset-a { border-bottom-color: var(--accent); color: var(--accent); }
+  .compare-col-header.preset-b { border-bottom-color: #7c3aed; color: #7c3aed; }
+
+  /* Per-column loading indicator */
+  .compare-col-loading {
+    padding: 20px 0;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 13px;
+    text-align: center;
+  }
+
   .compare-results { display: flex; flex-direction: column; gap: 10px; }
+
+  /* Compare result card */
   .cmp-card {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -1003,6 +1060,31 @@
     margin: 0 0 6px;
     line-height: 1.5;
   }
+
+  /* Per-stage explain score pills */
+  .explain-stages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+  }
+  .explain-stage {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: #f4f4fd;
+    border: 1px solid #dde;
+    border-radius: 4px;
+    padding: 2px 7px;
+    color: #444;
+    white-space: nowrap;
+  }
+  .explain-stage .stage-name {
+    font-weight: 600;
+    color: var(--accent);
+    margin-right: 3px;
+  }
+
+  /* Legacy cmp-card-* styles retained for backward compatibility */
   .cmp-card-snippet {
     font-size: 12.5px;
     background: #f0fdf4;
@@ -1033,9 +1115,7 @@
     line-height: 1.5;
     color: #166534;
   }
-  .cmp-kw-snippet .ctx {
-    color: #4b5563;
-  }
+  .cmp-kw-snippet .ctx { color: #4b5563; }
   .cmp-card-snippet .passage-label {
     font-size: 11px;
     font-weight: 600;
@@ -1103,6 +1183,21 @@
   </section>
 
   <section class="panel compare-section" id="panel-compare" role="tabpanel" aria-labelledby="tab-compare" hidden>
+    <!-- Preset selector row: choose two named retrieval configurations to compare -->
+    <div class="compare-presets">
+      <div class="compare-preset-field">
+        <label class="compare-preset-label" for="preset-a">Preset A</label>
+        <select id="preset-a" class="compare-preset-select" aria-label="Preset A">
+          <option value="">Loading presets…</option>
+        </select>
+      </div>
+      <div class="compare-preset-field">
+        <label class="compare-preset-label" for="preset-b">Preset B</label>
+        <select id="preset-b" class="compare-preset-select" aria-label="Preset B">
+          <option value="">Loading presets…</option>
+        </select>
+      </div>
+    </div>
     <div class="searchbar" id="compare-searchbar">
       <input
         id="cq"
@@ -1113,15 +1208,19 @@
       />
       <button id="cgo" type="button">Compare</button>
     </div>
-    <p class="search-note">Left: <strong>Semantic</strong> results (meaning). Right: <strong>Keyword</strong> results (exact terms via Postgres FTS).</p>
+    <p class="search-note">Select two presets above and enter a query to compare their ranked results side by side with per-stage explain scores.</p>
     <div class="status" id="compare-status" aria-live="polite"></div>
-    <div class="compare-columns" id="compare-columns" hidden>
-      <div class="compare-col">
-        <div class="compare-col-header semantic">Semantic</div>
+    <div class="compare-columns" id="compare-columns">
+      <!-- Column A (Preset A) — id="compare-semantic" retained for backward compatibility -->
+      <div class="compare-col" id="compare-col-a">
+        <div class="compare-col-header preset-a" id="compare-col-header-a">Semantic</div>
+        <div class="compare-col-loading" id="compare-loading-a" hidden aria-live="polite">Searching…</div>
         <div class="compare-results" id="compare-semantic"></div>
       </div>
-      <div class="compare-col">
-        <div class="compare-col-header keyword">Keyword</div>
+      <!-- Column B (Preset B) — id="compare-keyword" retained for backward compatibility -->
+      <div class="compare-col" id="compare-col-b">
+        <div class="compare-col-header preset-b" id="compare-col-header-b">Keyword</div>
+        <div class="compare-col-loading" id="compare-loading-b" hidden aria-live="polite">Searching…</div>
         <div class="compare-results" id="compare-keyword"></div>
       </div>
     </div>
@@ -2126,68 +2225,149 @@
   })();
 
   // ---------------------------------------------------------------------------
-  // Compare tab — fires /search and /search/exact in parallel, side by side
+  // Compare tab — Configuration Audit Tool
+  // Fires two parallel requests to /search, each using a named preset with debug=true,
+  // and renders per-stage explain scores alongside the ranked results.
+  // Note: /search/exact (Postgres FTS keyword search) is still available as a separate
+  // endpoint; this Compare tab now uses /search with preset overrides for richer comparison.
   // ---------------------------------------------------------------------------
 
-  const compareInput      = document.getElementById("cq");
-  const compareBtn        = document.getElementById("cgo");
-  const compareStatusEl   = document.getElementById("compare-status");
-  const compareSemanticEl = document.getElementById("compare-semantic");
-  const compareKeywordEl  = document.getElementById("compare-keyword");
-  const compareColumns    = document.getElementById("compare-columns");
+  const compareInput       = document.getElementById("cq");
+  const compareBtn         = document.getElementById("cgo");
+  const compareStatusEl    = document.getElementById("compare-status");
+  const compareColumns     = document.getElementById("compare-columns");
+  const presetASelect      = document.getElementById("preset-a");
+  const presetBSelect      = document.getElementById("preset-b");
+  const compareLoadingA    = document.getElementById("compare-loading-a");
+  const compareLoadingB    = document.getElementById("compare-loading-b");
+  const compareSemanticEl  = document.getElementById("compare-semantic");
+  const compareKeywordEl   = document.getElementById("compare-keyword");
+  const compareColHeaderA  = document.getElementById("compare-col-header-a");
+  const compareColHeaderB  = document.getElementById("compare-col-header-b");
 
-  function renderCmpCard(r, isKeyword, query, topScore) {
-    return renderFlatChunkCard(r, query, topScore, { compact: true, isKeyword });
+  // Populate preset dropdowns from GET /api/presets
+  async function loadComparePresets() {
+    try {
+      const resp = await fetch(`${API_BASE}/api/presets`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const presets = Array.isArray(data.presets) ? data.presets : [];
+      if (presets.length === 0) return;
+
+      presetASelect.innerHTML = "";
+      presetBSelect.innerHTML = "";
+
+      presets.forEach((name, i) => {
+        const optA = document.createElement("option");
+        optA.value = name;
+        optA.textContent = name;
+        if (i === 0) optA.selected = true;
+        presetASelect.appendChild(optA);
+
+        const optB = document.createElement("option");
+        optB.value = name;
+        optB.textContent = name;
+        if (i === Math.min(1, presets.length - 1)) optB.selected = true;
+        presetBSelect.appendChild(optB);
+      });
+
+      // Update column headers to reflect the default preset selections
+      compareColHeaderA.textContent = presetASelect.value || "Preset A";
+      compareColHeaderB.textContent = presetBSelect.value || "Preset B";
+    } catch {
+      // Keep placeholder options on error
+    }
   }
 
-  async function doCompare(query) {
-    const k = 10;
-    compareBtn.disabled = true;
-    compareStatusEl.textContent = "Searching…";
-    compareSemanticEl.innerHTML = "";
-    compareKeywordEl.innerHTML = "";
-    compareColumns.hidden = false;
+  loadComparePresets();
+
+  // Show/hide loading indicator for a column; clear results when loading starts
+  function setColLoading(col, isLoading) {
+    if (col === "a") {
+      compareLoadingA.hidden = !isLoading;
+      if (isLoading) compareSemanticEl.innerHTML = "";
+    } else {
+      compareLoadingB.hidden = !isLoading;
+      if (isLoading) compareKeywordEl.innerHTML = "";
+    }
+  }
+
+  // Render an error into one column without touching the other
+  function renderColError(col, msg) {
+    const el = col === "a" ? compareSemanticEl : compareKeywordEl;
+    el.innerHTML = `<div class="error-state"><strong>Search failed</strong>${escapeHtml(msg)}</div>`;
+  }
+
+  // Build HTML for per-stage explain score pills
+  function renderExplainStages(explainArr) {
+    if (!Array.isArray(explainArr) || explainArr.length === 0) return "";
+    const pills = explainArr.map((s) => {
+      const scoreStr = typeof s.score === "number" ? s.score.toFixed(4) : "—";
+      return `<span class="explain-stage"><span class="stage-name">${escapeHtml(s.stage)}</span>${scoreStr}</span>`;
+    }).join("");
+    return `<div class="explain-stages">${pills}</div>`;
+  }
+
+  // Render a single compare result card with explain scores beneath the snippet
+  function renderCompareCard(r, query) {
+    const headline = r.headline ?? "(untitled)";
+    const snippet = chunkSnippetText(r);
+    const snippetHtml = escapeHtml(snippet.length > 220 ? snippet.slice(0, 220) + "…" : snippet);
+    const explainHtml = renderExplainStages(r.explain);
+    return `
+      <article class="cmp-card">
+        <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
+        <p class="cmp-card-details">${snippetHtml}</p>
+        ${explainHtml}
+      </article>`;
+  }
+
+  // Render results (or empty state) into one column
+  function renderColResults(col, results, query) {
+    const el = col === "a" ? compareSemanticEl : compareKeywordEl;
+    const { visible } = capResultRows(results);
+    if (visible.length === 0) {
+      el.innerHTML = '<div class="empty">No results.</div>';
+      return;
+    }
+    el.innerHTML = visible.map((r) => renderCompareCard(r, query)).join("");
+  }
+
+  // Fire a search for one column using the given preset; hides loading when done
+  async function runColSearch(col, preset, query) {
+    setColLoading(col, true);
+    const headerEl = col === "a" ? compareColHeaderA : compareColHeaderB;
+    headerEl.textContent = preset || (col === "a" ? "Preset A" : "Preset B");
 
     try {
-      const [semResp, kwResp] = await Promise.all([
-        fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}&k=${k}`),
-        fetch(`${API_BASE}/search/exact?q=${encodeURIComponent(query)}&k=${k}`),
-      ]);
-
-      const semData = semResp.ok ? await semResp.json() : { results: [] };
-      const kwData  = kwResp.ok  ? await kwResp.json()  : { results: [] };
-
-      const semResults = Array.isArray(semData.results) ? semData.results : [];
-      const kwResults  = Array.isArray(kwData.results)  ? kwData.results  : [];
-
-      const semCap = capResultRows(semResults);
-      const kwCap = capResultRows(kwResults);
-      const semTop = Math.max(...semCap.visible.map((r) => r.score), 0);
-
-      compareStatusEl.textContent =
-        `Semantic: ${formatResultStatus(semCap.total, semCap.visible.length)}` +
-        ` · Keyword: ${formatResultStatus(kwCap.total, kwCap.visible.length)}`;
-
-      compareSemanticEl.innerHTML = semCap.visible.length
-        ? semCap.visible.map((r) => renderCmpCard(r, false, query, semTop)).join("")
-        : '<div class="empty">No semantic results.</div>';
-
-      compareKeywordEl.innerHTML = kwCap.visible.length
-        ? kwCap.visible.map((r) => renderCmpCard(r, true, query, 0)).join("")
-        : '<div class="empty">No keyword results.</div>';
-
-      requestAnimationFrame(() => {
-        compareColumns.querySelectorAll(".rel .bar > span").forEach((el) => {
-          el.style.width = (el.dataset.pct || 0) + "%";
-        });
-      });
+      const url = `${API_BASE}/search?q=${encodeURIComponent(query)}&preset=${encodeURIComponent(preset)}&debug=true&k=10`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Server returned ${resp.status} ${resp.statusText}`);
+      const data = await resp.json();
+      const results = Array.isArray(data.results) ? data.results : [];
+      renderColResults(col, results, query);
     } catch (err) {
-      compareStatusEl.textContent = "";
-      compareSemanticEl.innerHTML =
-        `<div class="error-state"><strong>Search error</strong>${escapeHtml(err.message)}</div>`;
+      renderColError(col, err.message);
     } finally {
-      compareBtn.disabled = false;
+      if (col === "a") compareLoadingA.hidden = true;
+      else compareLoadingB.hidden = true;
     }
+  }
+
+  // Fire both column searches in parallel
+  async function doCompare(query) {
+    compareBtn.disabled = true;
+    compareStatusEl.textContent = "";
+
+    const presetA = presetASelect.value;
+    const presetB = presetBSelect.value;
+
+    await Promise.all([
+      runColSearch("a", presetA, query),
+      runColSearch("b", presetB, query),
+    ]);
+
+    compareBtn.disabled = false;
   }
 
   compareBtn.addEventListener("click", () => {
@@ -2200,6 +2380,19 @@
       const query = compareInput.value.trim();
       if (query) doCompare(query);
     }
+  });
+
+  // Preset change → re-run only that column (no full reload; guard against empty query)
+  presetASelect.addEventListener("change", () => {
+    const query = compareInput.value.trim();
+    if (!query) return;
+    runColSearch("a", presetASelect.value, query);
+  });
+
+  presetBSelect.addEventListener("change", () => {
+    const query = compareInput.value.trim();
+    if (!query) return;
+    runColSearch("b", presetBSelect.value, query);
   });
 
   compareColumns.addEventListener("click", (e) => {

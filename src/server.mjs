@@ -18,7 +18,7 @@ import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { searchDocuments } from "./search/index.js";
-import { resolveRetrievalConfig, parseConfigOverrides } from "./config/retrieval.js";
+import { resolveRetrievalConfig, parseConfigOverrides, KNOWN_PRESETS } from "./config/retrieval.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
 import { validateArticle, validateArticleId, getArticleIdError } from "./data/articleValidation.js";
@@ -146,6 +146,12 @@ async function handleRequest(req, res) {
       "Access-Control-Allow-Headers": "Content-Type",
     });
     res.end();
+    return;
+  }
+
+  // GET /api/presets — list available named search configurations for the Compare tab
+  if (req.method === "GET" && pathname === "/api/presets") {
+    jsonResponse(res, 200, { presets: [...KNOWN_PRESETS] });
     return;
   }
 
