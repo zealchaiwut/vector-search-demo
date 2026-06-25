@@ -965,6 +965,44 @@
   /* Compare view */
   .compare-section { }
 
+  /* Legend / glossary for presets, params, models & explain stages */
+  .compare-legend {
+    margin: 0 0 16px;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    padding: 8px 14px;
+    background: var(--surface-muted, #f8fafc);
+    font-size: 13px;
+  }
+  .compare-legend > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--accent, #2563eb);
+    list-style: revert;
+  }
+  .legend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 8px 24px;
+    margin-top: 12px;
+  }
+  .legend-group h4 {
+    margin: 0 0 4px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted, #64748b);
+  }
+  .legend-group dl { margin: 0; }
+  .legend-group dt { font-weight: 600; margin-top: 6px; }
+  .legend-group dd { margin: 0 0 2px; color: var(--muted, #475569); line-height: 1.4; }
+  .legend-group code {
+    background: rgba(100,116,139,0.15);
+    padding: 0 4px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
   /* Preset selector row */
   .compare-presets {
     display: flex;
@@ -1158,6 +1196,18 @@
   </div>
 
   <section class="panel" id="panel-search" role="tabpanel" aria-labelledby="tab-search">
+  <!-- Search-mode selector: pick which retrieval pipeline runs (mirrors the Compare preset picker) -->
+  <div class="compare-presets search-mode-row">
+    <div class="compare-preset-field">
+      <label class="compare-preset-label" for="search-mode">Search mode</label>
+      <select id="search-mode" class="compare-preset-select" aria-label="Search mode">
+        <option value="hybrid-rerank" selected>Hybrid + Rerank</option>
+        <option value="hybrid">Hybrid</option>
+        <option value="dense-only">Dense only</option>
+        <option value="keyword">Keyword</option>
+      </select>
+    </div>
+  </div>
   <div class="searchbar">
     <input
       id="q"
@@ -1209,6 +1259,44 @@
       <button id="cgo" type="button">Compare</button>
     </div>
     <p class="search-note">Select two presets above and enter a query to compare their ranked results side by side with per-stage explain scores.</p>
+    <details class="compare-legend">
+      <summary>What do these presets, parameters &amp; scores mean?</summary>
+      <div class="legend-grid">
+        <div class="legend-group">
+          <h4>Presets</h4>
+          <dl>
+            <dt>Dense only</dt><dd>Pure vector (semantic) search using MiniLM embeddings — matches by meaning, ignores exact wording.</dd>
+            <dt>Hybrid</dt><dd>Blends dense (semantic) and lexical (keyword) results via RRF fusion, so it catches both meaning and exact terms.</dd>
+            <dt>Hybrid + Rerank</dt><dd>Hybrid retrieval, then a cross-encoder re-scores the top candidates for sharper ordering. Best quality, slowest. (Default.)</dd>
+            <dt>Keyword</dt><dd>Postgres full-text search (ts_rank) — exact word/stem matching only, no embeddings.</dd>
+          </dl>
+        </div>
+        <div class="legend-group">
+          <h4>Parameters</h4>
+          <dl>
+            <dt>RRF (Reciprocal Rank Fusion)</dt><dd>Merges two ranked lists by rank position rather than raw score; constant <code>k</code> (default 60) softens the pull of the very top ranks.</dd>
+            <dt>Fusion weight</dt><dd>Dense/lexical blend from 0–1. 0.7 means 70% weight to the dense (semantic) side.</dd>
+            <dt>Rerank candidates</dt><dd>How many top hits the cross-encoder re-scores (default 50). More = better ordering, slower.</dd>
+          </dl>
+        </div>
+        <div class="legend-group">
+          <h4>Models</h4>
+          <dl>
+            <dt>MiniLM (all-MiniLM-L6-v2)</dt><dd>Small, fast sentence-embedding model that turns text into 384-dim vectors for dense search.</dd>
+            <dt>Cross-encoder (ms-marco-MiniLM-L-6-v2)</dt><dd>Reranker that scores the query and a passage together for precise relevance.</dd>
+          </dl>
+        </div>
+        <div class="legend-group">
+          <h4>Explain stages (score pills)</h4>
+          <dl>
+            <dt>dense</dt><dd>Score from vector (semantic) similarity.</dd>
+            <dt>lexical</dt><dd>Score from keyword / full-text match.</dd>
+            <dt>rrf</dt><dd>Fused rank score after combining dense + lexical.</dd>
+            <dt>rerank</dt><dd>Final cross-encoder relevance score.</dd>
+          </dl>
+        </div>
+      </div>
+    </details>
     <div class="status" id="compare-status" aria-live="polite"></div>
     <div class="compare-columns" id="compare-columns">
       <!-- Column A (Preset A) — id="compare-semantic" retained for backward compatibility -->
@@ -1498,6 +1586,7 @@
   const btn      = document.getElementById("go");
   const statusEl = document.getElementById("status");
   const resultsEl = document.getElementById("results");
+  const searchModeSelect = document.getElementById("search-mode");
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({
@@ -1724,7 +1813,11 @@
     resultsEl.innerHTML = "";
 
     try {
-      const resp = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
+      const mode = searchModeSelect ? searchModeSelect.value : "hybrid-rerank";
+      const url = mode === "keyword"
+        ? `${API_BASE}/search/exact?q=${encodeURIComponent(query)}&k=10`
+        : `${API_BASE}/search?q=${encodeURIComponent(query)}&preset=${encodeURIComponent(mode)}`;
+      const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Server returned ${resp.status} ${resp.statusText}`);
       const data = await resp.json();
       const results = Array.isArray(data.results) ? data.results : [];
@@ -1755,6 +1848,14 @@
       if (query) doSearch(query);
     }
   });
+
+  // Mode change → re-run the current query so results reflect the new pipeline
+  if (searchModeSelect) {
+    searchModeSelect.addEventListener("change", () => {
+      const query = input.value.trim();
+      if (query) doSearch(query);
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Full-article modal with best-passage highlight
@@ -2271,6 +2372,14 @@
         presetBSelect.appendChild(optB);
       });
 
+      // Append pure keyword (Postgres FTS) as a comparable option in both columns
+      [presetASelect, presetBSelect].forEach((sel) => {
+        const optK = document.createElement("option");
+        optK.value = "keyword";
+        optK.textContent = "Keyword";
+        sel.appendChild(optK);
+      });
+
       // Update column headers to reflect the default preset selections
       compareColHeaderA.textContent = presetASelect.value || "Preset A";
       compareColHeaderB.textContent = presetBSelect.value || "Preset B";
@@ -2298,12 +2407,22 @@
     el.innerHTML = `<div class="error-state"><strong>Search failed</strong>${escapeHtml(msg)}</div>`;
   }
 
+  // One-line meaning per explain stage, shown on hover (see Compare legend)
+  const STAGE_TOOLTIPS = {
+    dense: "Score from vector (semantic) similarity.",
+    lexical: "Score from keyword / full-text match.",
+    rrf: "Fused rank score after combining dense + lexical.",
+    rerank: "Final cross-encoder relevance score.",
+  };
+
   // Build HTML for per-stage explain score pills
   function renderExplainStages(explainArr) {
     if (!Array.isArray(explainArr) || explainArr.length === 0) return "";
     const pills = explainArr.map((s) => {
       const scoreStr = typeof s.score === "number" ? s.score.toFixed(4) : "—";
-      return `<span class="explain-stage"><span class="stage-name">${escapeHtml(s.stage)}</span>${scoreStr}</span>`;
+      const tip = STAGE_TOOLTIPS[s.stage] || "";
+      const titleAttr = tip ? ` title="${escapeHtml(tip)}"` : "";
+      return `<span class="explain-stage"${titleAttr}><span class="stage-name">${escapeHtml(s.stage)}</span>${scoreStr}</span>`;
     }).join("");
     return `<div class="explain-stages">${pills}</div>`;
   }
@@ -2340,7 +2459,9 @@
     headerEl.textContent = preset || (col === "a" ? "Preset A" : "Preset B");
 
     try {
-      const url = `${API_BASE}/search?q=${encodeURIComponent(query)}&preset=${encodeURIComponent(preset)}&debug=true&k=10`;
+      const url = preset === "keyword"
+        ? `${API_BASE}/search/exact?q=${encodeURIComponent(query)}&k=10`
+        : `${API_BASE}/search?q=${encodeURIComponent(query)}&preset=${encodeURIComponent(preset)}&debug=true&k=10`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Server returned ${resp.status} ${resp.statusText}`);
       const data = await resp.json();
