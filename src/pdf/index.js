@@ -42,6 +42,7 @@ export async function extractPdfText(pdfBuffer, ocr) {
     page.cleanup();
   }
 
+  await pdfProxy.destroy();
   return pageResults.join('\n');
 }
 
