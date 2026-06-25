@@ -11,6 +11,7 @@
  *   RETRIEVAL_RRF_K                    — RRF constant k (default: 60)
  *   RETRIEVAL_RERANK_ENABLED           — enable cross-encoder reranking (default: false)
  *   RETRIEVAL_RERANK_MODEL_ID          — reranker model id (default: cross-encoder/ms-marco-MiniLM-L-6-v2)
+ *   RETRIEVAL_RERANK_CANDIDATE_COUNT   — candidates fetched before reranking (default: 50)
  *   RETRIEVAL_CHUNK_SIZE               — characters per chunk (default: 400)
  *   RETRIEVAL_CHUNK_OVERLAP            — character overlap between chunks (default: 80)
  *   RETRIEVAL_TEXT_NORMALISATION_ENABLED — normalise text before embedding (default: true)
@@ -52,6 +53,7 @@ export const PRESETS = {
     rrfK: 60,
     rerankEnabled: false,
     rerankModelId: "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    rerankCandidateCount: 50,
     chunkSize: 400,
     chunkOverlap: 80,
     textNormalisationEnabled: true,
@@ -64,6 +66,7 @@ export const PRESETS = {
     rrfK: 60,
     rerankEnabled: false,
     rerankModelId: "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    rerankCandidateCount: 50,
     chunkSize: 400,
     chunkOverlap: 80,
     textNormalisationEnabled: true,
@@ -76,6 +79,7 @@ export const PRESETS = {
     rrfK: 60,
     rerankEnabled: true,
     rerankModelId: "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    rerankCandidateCount: 50,
     chunkSize: 400,
     chunkOverlap: 80,
     textNormalisationEnabled: true,
@@ -104,6 +108,7 @@ export function defaultRetrievalConfig() {
     rerankModelId:
       process.env.RETRIEVAL_RERANK_MODEL_ID ??
       "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    rerankCandidateCount: parseIntVal(process.env.RETRIEVAL_RERANK_CANDIDATE_COUNT, 50),
     chunkSize: parseIntVal(
       process.env.RETRIEVAL_CHUNK_SIZE ?? process.env.CHUNK_SIZE,
       400,
@@ -146,6 +151,8 @@ export function parseConfigOverrides(params) {
     out.rerankEnabled = parseBool(params.rerankEnabled, undefined);
   if (params.rerankModelId !== undefined)
     out.rerankModelId = String(params.rerankModelId);
+  if (params.rerankCandidateCount !== undefined)
+    out.rerankCandidateCount = parseIntVal(params.rerankCandidateCount, undefined);
   if (params.chunkSize !== undefined)
     out.chunkSize = parseIntVal(params.chunkSize, undefined);
   if (params.chunkOverlap !== undefined)
