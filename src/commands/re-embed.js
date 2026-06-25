@@ -77,6 +77,8 @@ async function reEmbedPostgres(recreate) {
   );
   const rows = result.rows.map((r) => ({
     id: r.id,
+    article_id: r.article_id,
+    chunk_index: r.chunk_index,
     headline: r.headline,
     details: r.details,
     attachment_url: r.attachment_url,
