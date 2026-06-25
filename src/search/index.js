@@ -19,12 +19,10 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createEmbedder } from "../embeddings/index.js";
 import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
 import { flattenChunkResults } from "./flattenResults.js";
 import { defaultRetrievalConfig } from "../config/retrieval.js";
 import { mergeRrf } from "./rrf.js";
-import { Reranker } from "./reranker.js";
 import { normalise } from "../text/normalise.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -51,7 +49,10 @@ function getMaxChunks(override) {
 
 let _embedder = null;
 async function getEmbedder() {
-  if (!_embedder) _embedder = await createEmbedder();
+  if (!_embedder) {
+    const { createEmbedder } = await import("../embeddings/index.js");
+    _embedder = await createEmbedder();
+  }
   return _embedder;
 }
 
@@ -609,6 +610,7 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
     }
 
     // RRF fusion: merge dense + lexical lists.
+    const denseResultCount = results.length;
     const rrfT0 = performance.now();
     const fused = mergeRrf(results, lexicalResults, rrfK);
     results = fused.slice(0, topK);
@@ -616,6 +618,25 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
 
     if (debug) {
       _recordExplainStage(explainMap, results, "rrf", rrfLatencyMs);
+      // Fill in missing dense/lexical stages for results that appeared in only one list.
+      for (const r of results) {
+        const key = _explainKey(r);
+        const stages = explainMap.get(key) ?? [];
+        if (!stages.some((s) => s.stage === "lexical")) {
+          const rrfIdx = stages.findIndex((s) => s.stage === "rrf");
+          const miss = { stage: "lexical", score: 0, rank: lexicalResults.length + 1, rankDelta: 0, latencyMs: parseFloat(lexicalLatencyMs.toFixed(2)) };
+          if (rrfIdx >= 0) stages.splice(rrfIdx, 0, miss);
+          else stages.push(miss);
+          explainMap.set(key, stages);
+        }
+        if (!stages.some((s) => s.stage === "dense")) {
+          const lexIdx = stages.findIndex((s) => s.stage === "lexical");
+          const miss = { stage: "dense", score: 0, rank: denseResultCount + 1, rankDelta: 0, latencyMs: parseFloat(denseLatencyMs.toFixed(2)) };
+          if (lexIdx >= 0) stages.splice(lexIdx, 0, miss);
+          else stages.unshift(miss);
+          explainMap.set(key, stages);
+        }
+      }
     }
     // dense_rank, lexical_rank, fused_score are always set by mergeRrf on hybrid results.
   }
@@ -624,8 +645,18 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   if (cfg.rerankEnabled && results.length > 0) {
     const rerankT0 = performance.now();
 
-    const reranker = new Reranker();
-    const reranked = reranker.rerank(normalisedQuery, results);
+    const { createReranker } = await import("../rerank/index.js");
+    const reranker = createReranker();
+    const chunks = results.map((r) => r.details ?? r.text ?? "");
+    const rerankScores = await reranker.rerank(normalisedQuery, chunks);
+    const reranked = results
+      .map((result, idx) => ({
+        result: { ...result, score: parseFloat((rerankScores[idx] ?? result.score).toFixed(6)) },
+        rerankScore: parseFloat((rerankScores[idx] ?? result.score).toFixed(6)),
+        preRerankRank: idx + 1,
+      }))
+      .sort((a, b) => b.rerankScore - a.rerankScore)
+      .map((item, idx) => ({ ...item, postRerankRank: idx + 1 }));
 
     // Slice to topK after reranking.
     const rerankedTop = reranked.slice(0, topK);
