@@ -26,15 +26,28 @@ for download. Includes a recall@k evaluation harness.
   capped by `SEARCH_MAX_CHUNKS` (default 3) or the `n` query parameter on `/search`.
 - **Exact/keyword search** — `GET /search/exact` runs Postgres FTS (`plainto_tsquery` +
   `ts_rank` over a GIN-indexed `tsvector` column). Only active when `DB_BACKEND=postgres`.
-- **Compare tab** — the search UI has a side-by-side tab that runs both semantic and
-  keyword searches simultaneously, with matched term highlighting.
+- **Configuration Audit Tool (Compare tab)** — the search UI has a side-by-side tab
+  with two preset selector dropdowns (Preset A / Preset B). Submitting a query fires
+  parallel requests under each preset with explain mode enabled; each result card shows
+  per-stage scores (dense, sparse, rerank) so ranking differences are immediately visible.
+  Changing a preset reruns only that column without a page reload.
+- **Configurable retrieval pipeline** — `src/config/retrieval.js` defines a `RetrievalConfig`
+  covering embedding model, top-k, hybrid fusion, reranking, chunking, and text
+  normalisation. Resolution order: env-var defaults → named preset → per-request overrides.
+  Built-in named presets: `dense-only`, `hybrid`, `hybrid-rerank`. Invalid preset names
+  return HTTP 400.
+- **Debug explain mode** — add `debug=true` to any search request to attach an `explain`
+  block to each result showing per-stage score, rank, rank delta, and latency (ms). Stages
+  that did not run are omitted entirely. No overhead is incurred on non-debug requests.
 - **Chunk-granularity Postgres storage** — the Postgres backend (`DB_BACKEND=postgres`)
   stores one row per chunk (sharing `article_id`), with a generated `tsvector` column for
   full-text search (migration `003_tsvector.sql`).
 - **HTTP API** — one Fastify server with `/health`, `/search`, `/download/:docId`
   (GET + HEAD), and the search UI at `/`.
-- **Evaluation** — `npm run eval` reports recall@k against the running server.
-  Current corpus + fixtures score **recall@5 = 1.00**.
+- **Evaluation** — `npm run eval` (JS, fixed fixtures) reports recall@k against the
+  running server. `python3 src/eval/run_eval.py` runs the Thai eval set and reports
+  Recall@k, nDCG, and MRR. `python3 src/eval/run_ablation.py` compares presets
+  side-by-side in a metrics table (Recall@k, nDCG, MRR, avg latency).
 
 ### ❌ Not built / not wired (despite being present in the tree)
 - **Corpus is a fixed built-in set**, not loaded from external files or a real data source.
@@ -105,7 +118,9 @@ node dist/cli.js rechunk              # delete and regenerate all chunks using c
 | `GET` | `/health` | `{"status":"ok"}` |
 | `GET` | `/health/integrity` | Compare article count vs. vector count |
 | `GET` | `/api/config` | Runtime config for the UI (`{ "env": "prd" }` from `ENV` in `.env`) |
-| `GET` | `/search?q=<query>&k=<n>&n=<chunks>` | Return top-k ranked result cards (semantic); `n` caps chunk hits per article (default: `SEARCH_MAX_CHUNKS`, 3) |
+| `GET` | `/api/presets` | List available named retrieval presets (`{ "presets": ["dense-only", "hybrid", "hybrid-rerank"] }`) |
+| `GET` | `/search?q=<query>[&preset=<name>][&debug=true][&topK=N][&rerankEnabled=true\|false][&k=<n>][&n=<chunks>]` | Return top-k ranked result cards (semantic). `preset` selects a named config; additional params override individual fields. `n` caps chunk hits per article. `debug=true` adds per-result `explain` blocks. |
+| `POST` | `/search` | Same as `GET /search` but accepts JSON body `{ "q": "...", "preset": "...", "debug": true, ...overrides }`. |
 | `GET` | `/search/exact?q=<query>&k=<n>` | Return top-k keyword results via Postgres FTS (`DB_BACKEND=postgres` only) |
 | `GET` / `HEAD` | `/download/:articleId` | Download the ingested source article as `.txt` |
 | `POST` | `/articles` | Create a new article (validated) |
@@ -138,11 +153,29 @@ Search result shape (`GET /search`):
       ],
       "chunks": [
         { "text": "...", "score": 0.8700 }
+      ],
+      "explain": [
+        { "stage": "dense",  "score": 0.87, "rank": 1, "rankDelta": 0,  "latencyMs": 12.4 },
+        { "stage": "rerank", "score": 0.91, "rank": 1, "rankDelta": 0,  "latencyMs": 8.1 }
       ]
     }
-  ]
+  ],
+  "config": {
+    "embeddingModelId": "Xenova/all-MiniLM-L6-v2",
+    "topK": 10,
+    "hybridEnabled": false,
+    "hybridFusionWeight": 0.7,
+    "rerankEnabled": false,
+    "rerankModelId": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "chunkSize": 400,
+    "chunkOverlap": 80,
+    "textNormalisationEnabled": true
+  },
+  "activePreset": "hybrid-rerank"
 }
 ```
+
+`explain` is only present on each result when `debug=true`. Stages that did not run are omitted (never null). `config` is always returned and reflects the resolved `RetrievalConfig` for the request. `activePreset` is only present at the top level when `debug=true`.
 
 `attachment_url` is `null` when absent, or a URL/path string otherwise. Accepted forms: `http(s)://` external URLs, `/download/`-prefixed paths (built-in ingested articles), and `/uploads/`-prefixed paths (PDFs uploaded via the Upload PDF tab). `attachment_url_type` is `"local"` for `/download/`-prefixed paths or `"external"` for `http(s)://` URLs (also `null` when `attachment_url` is absent). Results where `attachment_url` is null do not render a link in the UI. `best_passage` is the highest-scoring passage from the article (cosine similarity against the query vector). `start_offset` / `end_offset` are character indices into the full article text. `passages` is an array of the top-scoring deduplicated chunk passages for the article, each with the same shape as `best_passage` plus a `score` field; `passages[0]` always equals `best_passage`. `chunks` is an array of all matched chunks for the article, each with a `text` field (the raw chunk text) and a `score` field (cosine similarity, 4 decimal places). Per-passage scores are rendered in the UI as a percentage label (e.g. "· 87%") next to each passage heading.
 
@@ -171,6 +204,46 @@ and reports recall@k.
 | `RECALL_THRESHOLD` | `0.8` | Minimum pass fraction (0.0–1.0) |
 
 Exit code 0 when recall@k ≥ threshold.
+
+### Thai eval runner (`src/eval/run_eval.py`)
+
+Runs the labeled Thai query set (`src/eval/thai_eval_set.json`) and reports
+**Recall@k**, **nDCG@k**, and **MRR** against the running server.
+
+```sh
+python3 src/eval/run_eval.py
+```
+
+| Env var | Default | Description |
+|---------|---------|-------------|
+| `SEARCH_URL` | `http://localhost:7070/search` | Search endpoint |
+| `K` | `10` | Top-k for all three metrics |
+| `RECALL_THRESHOLD` | `0.80` | Minimum recall@k to pass |
+| `EVAL_DATASET` | `src/eval/thai_eval_set.json` | Path to labeled dataset |
+| `COLLECTION_FILE` | (unset) | Optional corpus JSON for ID validation |
+
+Exit code 0 when recall@k ≥ threshold; non-zero with a descriptive error if any
+expected ID is absent from the corpus.
+
+### Ablation runner (`src/eval/run_ablation.py`)
+
+Compares multiple named presets side-by-side in one run, printing Recall@k, nDCG,
+MRR, and avg query latency per preset.
+
+```sh
+python3 src/eval/run_ablation.py [--config src/eval/ablation_presets.json] [--output results.json]
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--config FILE` | `src/eval/ablation_presets.json` | YAML or JSON preset definitions |
+| `--output FILE` | (none) | Write results to JSON or CSV (includes timestamp) |
+| `--search-url URL` | `http://localhost:7070/search` | Search endpoint |
+| `--k N` | `10` | Top-k for all metrics |
+| `--dataset FILE` | `src/eval/thai_eval_set.json` | Labeled dataset |
+
+Adding a new preset requires only editing the config file — no code changes. If one
+preset fails, the runner reports the error and continues with the remaining presets.
 
 ## Backends
 
@@ -230,6 +303,15 @@ Copy `.env.example` to `.env`.
 | `CHUNK_SIZE` | `400` | Characters per chunk used by `ingest` and `rechunk`. Character-based (not whitespace), so Thai text is handled correctly. |
 | `CHUNK_OVERLAP` | `80` | Character overlap between consecutive chunks for `ingest` and `rechunk`. |
 | `SEARCH_MAX_CHUNKS` | `3` | Maximum number of chunk hits to surface per article in search results. Can also be overridden per-request with the `n` query parameter on `GET /search`. |
+| `RETRIEVAL_EMBEDDING_MODEL_ID` | `Xenova/all-MiniLM-L6-v2` | Default embedding model for the retrieval pipeline. |
+| `RETRIEVAL_TOP_K` | `10` | Default number of results returned by the search endpoint. |
+| `RETRIEVAL_HYBRID_ENABLED` | `false` | Enable hybrid dense+sparse (BM25) fusion by default. |
+| `RETRIEVAL_HYBRID_FUSION_WEIGHT` | `0.7` | Dense/sparse blend weight (0–1, higher = more dense). |
+| `RETRIEVAL_RERANK_ENABLED` | `false` | Enable cross-encoder reranking by default. |
+| `RETRIEVAL_RERANK_MODEL_ID` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model used for reranking. |
+| `RETRIEVAL_CHUNK_SIZE` | `400` | Per-request chunk size default (falls back to `CHUNK_SIZE`). |
+| `RETRIEVAL_CHUNK_OVERLAP` | `80` | Per-request chunk overlap default (falls back to `CHUNK_OVERLAP`). |
+| `RETRIEVAL_TEXT_NORMALISATION_ENABLED` | `true` | Normalise text before embedding by default. |
 
 ## Architecture (current path)
 
@@ -249,14 +331,22 @@ src/commands/rechunk.js   delete all existing chunks for each article, re-chunk 
 src/commands/verify.js    integrity check: every article has ≥1 chunk, every chunk has a
                           non-null embedding; exits 0 on pass, 1 on failure
 
+src/config/retrieval.js  RetrievalConfig: env-var defaults, named presets (dense-only,
+                         hybrid, hybrid-rerank), per-request override parsing and resolution
 src/search/index.js  embeds query with "query: " e5 prefix, queries Milvus (HNSW COSINE ANN)
                      or Postgres (pgvector cosine) or falls back to linear cosine scan over
                      collection.json; groups chunk hits by article_id (capped at
-                     SEARCH_MAX_CHUNKS per article); returns passages and chunks per result
+                     SEARCH_MAX_CHUNKS per article); returns passages and chunks per result;
+                     optional debug explain trail (per-stage score/rank/latency) per result
 src/milvus/client.js   singleton MilvusClient wrapper (dynamic SDK import)
 src/milvus/schema.ts   Milvus collection schema: HNSW index, COSINE metric, dim=384
-src/server.mjs       HTTP: /health, /search, /download, /articles CRUD,
+src/server.mjs       HTTP: /health, /search (GET+POST, preset/config overrides, debug mode),
+                          /api/presets, /download, /articles CRUD,
                           /api/upload-pdf (PDF→article JSON), /uploads/ (static PDFs)
+src/eval/run_eval.py     Thai eval: Recall@k, nDCG, MRR against thai_eval_set.json
+src/eval/run_ablation.py Ablation runner: side-by-side preset comparison table
+src/eval/thai_eval_set.json Labeled Thai query → expected article IDs dataset
+src/eval/ablation_presets.json Default preset list for the ablation runner
 src/pdf/index.js     PDF text extraction (embedded text layer → OCR fallback)
 src/pdf/mapper.js    Map extracted text to add-article JSON shape
 src/ocr/index.js     Ocr interface + TesseractOcr (Thai language, sharp preprocessing)

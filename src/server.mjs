@@ -18,6 +18,7 @@ import { join, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { searchDocuments } from "./search/index.js";
+import { resolveRetrievalConfig, parseConfigOverrides, KNOWN_PRESETS } from "./config/retrieval.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
 import { validateArticle, validateArticleId, getArticleIdError } from "./data/articleValidation.js";
@@ -145,6 +146,12 @@ async function handleRequest(req, res) {
       "Access-Control-Allow-Headers": "Content-Type",
     });
     res.end();
+    return;
+  }
+
+  // GET /api/presets — list available named search configurations for the Compare tab
+  if (req.method === "GET" && pathname === "/api/presets") {
+    jsonResponse(res, 200, { presets: [...KNOWN_PRESETS] });
     return;
   }
 
@@ -415,16 +422,69 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // GET /search?q=<query>
-  // Result shape: [{ id, headline, details, score, attachment_url, best_passage }]
-  if (req.method === "GET" && pathname === "/search") {
-    const q = url.searchParams.get("q") ?? "";
-    const k = parseInt(url.searchParams.get("k") ?? "10", 10);
-    const nParam = url.searchParams.get("n");
-    const n = nParam !== null ? parseInt(nParam, 10) : null;
+  // GET /search?q=<query>[&preset=<name>][&topK=N][&rerankEnabled=true|false][&debug=true][&...]
+  // POST /search  — same params via JSON body
+  // Normal result shape: { results: [...], config: RetrievalConfig }
+  // Debug result shape:  { results: [...], config: RetrievalConfig, activePreset: string|null }
+  //   Each result in debug mode also carries an `explain` block with per-stage score/rank/latency.
+  if (pathname === "/search" && (req.method === "GET" || req.method === "POST")) {
+    let q = "";
+    let legacyK = null;
+    let legacyN = null;
+    let preset = null;
+    let debug = false;
+    let overrideParams = {};
+
+    if (req.method === "GET") {
+      q = url.searchParams.get("q") ?? "";
+      legacyK = url.searchParams.get("k");
+      legacyN = url.searchParams.get("n");
+      preset = url.searchParams.get("preset") ?? null;
+      const rawDebug = url.searchParams.get("debug");
+      debug = rawDebug === "true" || rawDebug === "1";
+      const rawParams = {};
+      for (const [key, val] of url.searchParams.entries()) {
+        if (key !== "q" && key !== "k" && key !== "n" && key !== "preset" && key !== "debug") {
+          rawParams[key] = val;
+        }
+      }
+      overrideParams = parseConfigOverrides(rawParams);
+      // Legacy k param maps to topK if not already provided
+      if (legacyK !== null && overrideParams.topK === undefined) {
+        overrideParams.topK = parseInt(legacyK, 10);
+      }
+    } else {
+      // POST: read JSON body
+      let rawBody = "";
+      for await (const chunk of req) rawBody += chunk;
+      let body = {};
+      try {
+        body = JSON.parse(rawBody);
+      } catch {
+        jsonResponse(res, 400, { error: "Invalid JSON body" });
+        return;
+      }
+      q = body.q ?? "";
+      preset = body.preset ?? null;
+      debug = body.debug === true || body.debug === "true";
+      const { q: _q, preset: _p, debug: _d, ...rest } = body;
+      overrideParams = parseConfigOverrides(rest);
+    }
+
+    const { config: resolvedConfig, error: configError } = resolveRetrievalConfig(preset, overrideParams);
+    if (configError) {
+      jsonResponse(res, 400, { error: configError });
+      return;
+    }
+
+    const nParam = legacyN !== null ? parseInt(legacyN, 10) : null;
     try {
-      const results = await searchDocuments(q, k, n);
-      jsonResponse(res, 200, { results });
+      const results = await searchDocuments(q, resolvedConfig.topK, nParam, resolvedConfig, debug);
+      const responseBody = { results, config: resolvedConfig };
+      if (debug) {
+        responseBody.activePreset = preset;
+      }
+      jsonResponse(res, 200, responseBody);
     } catch (err) {
       console.error("[server] Search failed unexpectedly:", err?.message ?? err);
       jsonResponse(res, 502, { error: "Search service unavailable" });

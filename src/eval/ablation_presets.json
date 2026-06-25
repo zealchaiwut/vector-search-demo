@@ -1,0 +1,19 @@
+{
+  "presets": [
+    {
+      "name": "dense-only",
+      "hybridEnabled": "false",
+      "rerankEnabled": "false"
+    },
+    {
+      "name": "hybrid",
+      "hybridEnabled": "true",
+      "rerankEnabled": "false"
+    },
+    {
+      "name": "hybrid-rerank",
+      "hybridEnabled": "true",
+      "rerankEnabled": "true"
+    }
+  ]
+}
