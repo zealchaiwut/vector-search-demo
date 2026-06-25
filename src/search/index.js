@@ -24,6 +24,7 @@ import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
 import { flattenChunkResults } from "./flattenResults.js";
 import { defaultRetrievalConfig } from "../config/retrieval.js";
 import { mergeRrf } from "./rrf.js";
+import { Reranker } from "./reranker.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -536,15 +537,19 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   const topK = cfg.topK ?? k;
   const maxChunks = getMaxChunks(maxChunksPerArticle);
 
+  // When reranking is enabled, retrieve a larger candidate pool before reranking.
+  const rerankCandidateCount = cfg.rerankCandidateCount ?? 50;
+  const retrievalK = cfg.rerankEnabled ? Math.max(topK, rerankCandidateCount) : topK;
+
   // --- Stage 1: Dense retrieval ---
   const denseT0 = performance.now();
   let grouped;
   if (usePostgres()) {
-    grouped = await _searchPostgres(query, topK, maxChunks);
+    grouped = await _searchPostgres(query, retrievalK, maxChunks);
   } else if (useMilvus()) {
-    grouped = await _searchMilvus(query, topK, maxChunks);
+    grouped = await _searchMilvus(query, retrievalK, maxChunks);
   } else {
-    grouped = await _searchFile(query, topK, maxChunks);
+    grouped = await _searchFile(query, retrievalK, maxChunks);
   }
   let results = flattenChunkResults(grouped);
   const denseLatencyMs = performance.now() - denseT0;
@@ -612,22 +617,39 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   }
 
   // --- Stage 4: Cross-encoder reranking ---
-  if (cfg.rerankEnabled && results.length > 1) {
+  if (cfg.rerankEnabled && results.length > 0) {
     const rerankT0 = performance.now();
-    // Reranking stub: boost results whose headline contains query terms.
-    const terms = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
-    results = results
-      .map((r) => {
-        const boost = terms.reduce((acc, t) =>
-          acc + ((r.headline ?? "").toLowerCase().includes(t) ? 0.05 : 0), 0);
-        return { ...r, score: parseFloat((r.score + boost).toFixed(4)) };
-      })
-      .sort((a, b) => b.score - a.score);
-    const rerankLatencyMs = performance.now() - rerankT0;
+
+    const reranker = new Reranker();
+    const reranked = reranker.rerank(query, results);
+
+    // Slice to topK after reranking.
+    const rerankedTop = reranked.slice(0, topK);
 
     if (debug) {
-      _recordExplainStage(explainMap, results, "rerank", rerankLatencyMs);
+      const rerankLatencyMs = performance.now() - rerankT0;
+      rerankedTop.forEach(({ result, rerankScore, preRerankRank, postRerankRank }) => {
+        const key = _explainKey(result);
+        const stages = explainMap.get(key) ?? [];
+        const prevStage = stages[stages.length - 1];
+        stages.push({
+          stage: "rerank",
+          score: result.score,
+          rank: postRerankRank,
+          rankDelta: prevStage ? postRerankRank - prevStage.rank : 0,
+          latencyMs: parseFloat(rerankLatencyMs.toFixed(2)),
+          rerankScore,
+          preRerankRank,
+          postRerankRank,
+        });
+        explainMap.set(key, stages);
+      });
     }
+
+    results = rerankedTop.map(({ result }) => result);
+  } else if (cfg.rerankEnabled) {
+    // No candidates to rerank; just return empty.
+    results = [];
   }
 
   // Attach explain blocks to each result (only when debug=true).
