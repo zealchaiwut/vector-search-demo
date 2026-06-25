@@ -13,7 +13,6 @@ Acceptance Criteria derived from issue body:
 import os
 import re
 import subprocess
-import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PDF_MODULE = os.path.join(REPO_ROOT, "src", "pdf", "index.js")
