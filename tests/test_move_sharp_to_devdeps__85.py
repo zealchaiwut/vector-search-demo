@@ -9,7 +9,6 @@ Acceptance Criteria:
 """
 import json
 from pathlib import Path
-import subprocess
 
 REPO_ROOT = Path(__file__).parent.parent
 PACKAGE_JSON = REPO_ROOT / "package.json"
