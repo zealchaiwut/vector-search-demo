@@ -60,6 +60,28 @@ Added by `src/store/migrations/003_tsvector.sql`. Powers `GET /search/exact` via
 | Index name | `articles_ts_gin_idx` |
 | Indexed column | `ts` |
 
+### Trigram Index for Lexical Search
+
+Added by `src/store/migrations/004_trgm.sql`. Powers trigram-based lexical search for Thai and other unspaced scripts via the `pg_trgm` extension.
+
+| Parameter | Value |
+|-----------|-------|
+| Extension | `pg_trgm` |
+| Index type | GIN |
+| Index name | `articles_details_trgm_idx` |
+| Indexed column | `details gin_trgm_ops` |
+
+## Postgres Table: `model_meta`
+
+Defined in `src/store/migrations/005_model_meta.sql`. Tracks the active embedding model and dimension to detect mismatches before they corrupt vector search. Applied automatically by `commander init` when `DB_BACKEND=postgres`.
+
+| Column | Type | Details |
+|--------|------|---------|
+| `id` | integer | Primary key; constrained to 1 (singleton row) |
+| `model_name` | text | Active embedding model name (NOT NULL) |
+| `dim` | integer | Vector dimension for the active model (NOT NULL) |
+| `updated_at` | timestamptz | Last update timestamp (default: now()) |
+
 ## Embedding Model Configuration
 
 ### Selecting a model

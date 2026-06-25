@@ -3,6 +3,14 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 13 (2026-06-25)
+
+- #135: Add trigram-based lexical search for Thai text
+- #136: Add hybrid dense + lexical retrieval with RRF fusion
+- #138: Wire reranker into search pipeline behind rerank flag
+- #139: Add Thai text normalization at ingest and query time
+- #141: Support selectable larger embedding models via config
+
 ## Sprint 12 (2026-06-24)
 
 - #130: Add configurable, per-request retrieval pipeline with presets
