@@ -23,15 +23,15 @@ Defined in `src/milvus/schema.ts`.
 
 ## Postgres Table: `articles` (pgvector backend)
 
-Defined in `src/store/migrations/001_articles.sql` (initial) and `002_chunk_columns.sql` (chunk columns). Applied automatically by `commander init` when `DB_BACKEND=postgres`.
+Defined in `src/store/migrations/001_articles.sql` (initial), `002_chunk_columns.sql` (chunk columns with backfill), and `006_chunk_columns_notnull.sql` (NOT NULL enforcement). Applied automatically by `commander init` when `DB_BACKEND=postgres`.
 
 Each row is one chunk of an article. Multiple rows share the same `article_id`.
 
 | Column | Type | Details |
 |--------|------|---------|
 | `id` | text | Primary key (format: `<uuid>:<chunk_index>`) |
-| `article_id` | text | Article-level identifier (bare UUID, shared across all chunks) |
-| `chunk_index` | integer | Zero-based position of this chunk within the article |
+| `article_id` | text | Article-level identifier (bare UUID, shared across all chunks) (NOT NULL — enforced by migration 006) |
+| `chunk_index` | integer | Zero-based position of this chunk within the article (NOT NULL — enforced by migration 006) |
 | `headline` | text | Article headline (NOT NULL) |
 | `details` | text | Chunk text (NOT NULL) |
 | `attachment_url` | text | Attachment URL: `http(s)://` external links, `/uploads/` paths, or `/download/` paths (nullable) |

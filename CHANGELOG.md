@@ -3,6 +3,20 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 14 (2026-06-25)
+
+- #59: Extract shared avgEmbeddings/collapseToArticles to src/store/embedUtils.js (single source of truth)
+- #60: Update DESIGN.md postgres backend status from "not yet wired" to fully implemented
+- #61: Consolidate Postgres connection config — pg_client.js now prefers DATABASE_URL; PgVectorStore gains checkHealth()
+- #71: Fix silent image-fragment loss in _ocrPage — composite all fragments instead of discarding smaller ones
+- #73: Call pdfProxy.destroy() after PDF text extraction to prevent WASM/worker resource leak
+- #85: Move sharp from dependencies to devDependencies (not required at runtime)
+- #86: Remove dead validateArticleId import from server.mjs
+- #87: Make PUT /articles/:id non-destructive — embed new chunks before deleting old ones
+- #88: Add migration 006 enforcing NOT NULL on article_id and chunk_index columns
+- #90: Remove duplicate test file test_canvas_optional_deps__74.py
+- #107: Fix reEmbedPostgres row mapping to preserve article_id and chunk_index in upsert payload
+
 ## Sprint 13.1 (2026-06-25)
 
 - #140: Add Thai word-boundary chunking mode behind config flag
