@@ -10,9 +10,11 @@ AC6 - If Thai segmenter is unavailable/fails, system falls back to length-based 
 AC7 - Unit tests cover: mid-word split prevention, paragraph-boundary preference, length-cap, fallback, length-mode regression
 """
 
+import json
 import os
 import subprocess
-import json
+
+import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHUNKER_JS = os.path.join(REPO_ROOT, "src", "data", "chunker.js")
@@ -538,4 +540,4 @@ if (chunksNoMode.length === chunksWithMode.length) {{
 """
     stdout, stderr, rc = _run_node(script)
     if rc == 0:
-        assert "NO_REGRESSION" in stdout or chunksWithMode.length == chunksNoMode.length
+        assert "NO_REGRESSION" in stdout
