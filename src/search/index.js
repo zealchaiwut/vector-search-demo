@@ -19,10 +19,11 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createEmbedder } from "../embeddings/index.js";
 import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
 import { flattenChunkResults } from "./flattenResults.js";
 import { defaultRetrievalConfig } from "../config/retrieval.js";
+import { mergeRrf } from "./rrf.js";
+import { normalise } from "../text/normalise.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -48,7 +49,10 @@ function getMaxChunks(override) {
 
 let _embedder = null;
 async function getEmbedder() {
-  if (!_embedder) _embedder = await createEmbedder();
+  if (!_embedder) {
+    const { createEmbedder } = await import("../embeddings/index.js");
+    _embedder = await createEmbedder();
+  }
   return _embedder;
 }
 
@@ -346,6 +350,65 @@ async function _searchFile(query, k, maxChunks) {
 }
 
 // ---------------------------------------------------------------------------
+// File-backed lexical search (term-frequency scoring)
+// ---------------------------------------------------------------------------
+
+/**
+ * Simple term-frequency lexical scorer for the file-backed collection.
+ * Returns flat chunk rows sorted by descending lexical score.
+ *
+ * @param {string} query
+ * @param {number} k
+ * @returns {Array<object>}
+ */
+export function _lexicalSearchFile(query, k = 10) {
+  const rows = loadRows();
+  if (rows.length === 0) return [];
+  const trimmed = (query ?? "").trim();
+  if (!trimmed) return [];
+
+  const terms = trimmed.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
+
+  const scored = [];
+  for (const row of rows) {
+    const text = `${row.headline ?? ""} ${row.details ?? ""}`.toLowerCase();
+    const totalLen = Math.max(text.length, 1);
+    let lexicalScore = 0;
+    for (const term of terms) {
+      let count = 0;
+      let pos = 0;
+      while ((pos = text.indexOf(term, pos)) !== -1) {
+        count++;
+        pos += term.length;
+      }
+      lexicalScore += (count * term.length) / totalLen;
+    }
+    if (lexicalScore > 0) {
+      const articleId = row.id.split(":")[0];
+      const chunkIdx = row.chunk_index ?? parseInt((row.id.split(":")[1] ?? "0"), 10);
+      const text_ = (row.details ?? "").replace(/\s+/g, " ").trim();
+      scored.push({
+        id: articleId,
+        article_id: articleId,
+        chunk_index: chunkIdx,
+        headline: row.headline,
+        text: text_,
+        details: text_.slice(0, 240),
+        score: lexicalScore,
+        attachment_url: row.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(row.attachment_url),
+        best_passage: { text: text_, start_offset: 0, end_offset: text_.length, context: { before: "", after: "" }, score: lexicalScore },
+        passages: [{ text: text_, start_offset: 0, end_offset: text_.length, context: { before: "", after: "" }, score: lexicalScore }],
+        chunks: [{ text: text_, score: lexicalScore, chunk_index: chunkIdx }],
+      });
+    }
+  }
+
+  return scored.sort((a, b) => b.score - a.score).slice(0, k);
+}
+
+// ---------------------------------------------------------------------------
 // Postgres-backed search path
 // ---------------------------------------------------------------------------
 
@@ -476,15 +539,22 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   const topK = cfg.topK ?? k;
   const maxChunks = getMaxChunks(maxChunksPerArticle);
 
+  // Normalise query text before embedding (same module used at ingest time)
+  const normalisedQuery = normalise(query, cfg.textNormalisationEnabled);
+
+  // When reranking is enabled, retrieve a larger candidate pool before reranking.
+  const rerankCandidateCount = cfg.rerankCandidateCount ?? 50;
+  const retrievalK = cfg.rerankEnabled ? Math.max(topK, rerankCandidateCount) : topK;
+
   // --- Stage 1: Dense retrieval ---
   const denseT0 = performance.now();
   let grouped;
   if (usePostgres()) {
-    grouped = await _searchPostgres(query, topK, maxChunks);
+    grouped = await _searchPostgres(normalisedQuery, retrievalK, maxChunks);
   } else if (useMilvus()) {
-    grouped = await _searchMilvus(query, topK, maxChunks);
+    grouped = await _searchMilvus(normalisedQuery, retrievalK, maxChunks);
   } else {
-    grouped = await _searchFile(query, topK, maxChunks);
+    grouped = await _searchFile(normalisedQuery, retrievalK, maxChunks);
   }
   let results = flattenChunkResults(grouped);
   const denseLatencyMs = performance.now() - denseT0;
@@ -496,41 +566,125 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   }
 
   // --- Stage 2 & 3: Lexical scoring + RRF fusion (hybrid pipeline) ---
-  if (cfg.hybridEnabled && debug) {
-    // Lexical stage: BM25/sparse scoring is a stub — score = 0 per result.
-    const lexicalT0 = performance.now();
-    const lexicalLatencyMs = performance.now() - lexicalT0;
-    const withLexicalScores = results.map((r) => ({ ...r, score: 0 }));
-    _recordExplainStage(explainMap, withLexicalScores, "lexical", lexicalLatencyMs);
+  if (cfg.hybridEnabled) {
+    const rrfK = cfg.rrfK ?? 60;
 
-    // RRF fusion: weight dense by fusionWeight (lexical contributes 0).
+    // Run lexical search on the appropriate backend.
+    const lexicalT0 = performance.now();
+    let lexicalResults = [];
+    try {
+      if (usePostgres()) {
+        const { getPgStore } = await import("../store/PgVectorStore.js");
+        const { searchLexical } = await import("../core/lexical/index.js");
+        const store = getPgStore();
+        const lexRows = await searchLexical(store, normalisedQuery, topK);
+        lexicalResults = lexRows.map((row) => {
+          const text = (row.details ?? "").replace(/\s+/g, " ").trim();
+          return {
+            id: row.id,
+            article_id: row.id,
+            chunk_index: row.chunk_index ?? 0,
+            headline: row.headline,
+            text,
+            details: text.slice(0, 240),
+            score: row.lexical_score,
+            attachment_url: row.attachment_url ?? null,
+            attachment_url_type: resolveAttachmentUrlType(row.attachment_url),
+            best_passage: { text, start_offset: 0, end_offset: text.length, context: { before: "", after: "" }, score: row.lexical_score },
+            passages: [{ text, start_offset: 0, end_offset: text.length, context: { before: "", after: "" }, score: row.lexical_score }],
+            chunks: [{ text, score: row.lexical_score, chunk_index: row.chunk_index ?? 0 }],
+          };
+        });
+      } else if (!useMilvus()) {
+        // File-backed backend: use term-frequency lexical scorer.
+        lexicalResults = _lexicalSearchFile(normalisedQuery, topK);
+      }
+      // Milvus has no native lexical path; lexicalResults stays [].
+    } catch {
+      lexicalResults = [];
+    }
+    const lexicalLatencyMs = performance.now() - lexicalT0;
+
+    if (debug) {
+      _recordExplainStage(explainMap, lexicalResults, "lexical", lexicalLatencyMs);
+    }
+
+    // RRF fusion: merge dense + lexical lists.
+    const denseResultCount = results.length;
     const rrfT0 = performance.now();
+    const fused = mergeRrf(results, lexicalResults, rrfK);
+    results = fused.slice(0, topK);
     const rrfLatencyMs = performance.now() - rrfT0;
-    // Fused score = fusionWeight * dense_score + (1 - fusionWeight) * 0
-    const withRrfScores = results.map((r) => ({
-      ...r,
-      score: parseFloat((cfg.hybridFusionWeight * r.score).toFixed(4)),
-    }));
-    _recordExplainStage(explainMap, withRrfScores, "rrf", rrfLatencyMs);
+
+    if (debug) {
+      _recordExplainStage(explainMap, results, "rrf", rrfLatencyMs);
+      // Fill in missing dense/lexical stages for results that appeared in only one list.
+      for (const r of results) {
+        const key = _explainKey(r);
+        const stages = explainMap.get(key) ?? [];
+        if (!stages.some((s) => s.stage === "lexical")) {
+          const rrfIdx = stages.findIndex((s) => s.stage === "rrf");
+          const miss = { stage: "lexical", score: 0, rank: lexicalResults.length + 1, rankDelta: 0, latencyMs: parseFloat(lexicalLatencyMs.toFixed(2)) };
+          if (rrfIdx >= 0) stages.splice(rrfIdx, 0, miss);
+          else stages.push(miss);
+          explainMap.set(key, stages);
+        }
+        if (!stages.some((s) => s.stage === "dense")) {
+          const lexIdx = stages.findIndex((s) => s.stage === "lexical");
+          const miss = { stage: "dense", score: 0, rank: denseResultCount + 1, rankDelta: 0, latencyMs: parseFloat(denseLatencyMs.toFixed(2)) };
+          if (lexIdx >= 0) stages.splice(lexIdx, 0, miss);
+          else stages.unshift(miss);
+          explainMap.set(key, stages);
+        }
+      }
+    }
+    // dense_rank, lexical_rank, fused_score are always set by mergeRrf on hybrid results.
   }
 
   // --- Stage 4: Cross-encoder reranking ---
-  if (cfg.rerankEnabled && results.length > 1) {
+  if (cfg.rerankEnabled && results.length > 0) {
     const rerankT0 = performance.now();
-    // Reranking stub: boost results whose headline contains query terms.
-    const terms = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
-    results = results
-      .map((r) => {
-        const boost = terms.reduce((acc, t) =>
-          acc + ((r.headline ?? "").toLowerCase().includes(t) ? 0.05 : 0), 0);
-        return { ...r, score: parseFloat((r.score + boost).toFixed(4)) };
-      })
-      .sort((a, b) => b.score - a.score);
-    const rerankLatencyMs = performance.now() - rerankT0;
+
+    const { createReranker } = await import("../rerank/index.js");
+    const reranker = createReranker();
+    const chunks = results.map((r) => r.details ?? r.text ?? "");
+    const rerankScores = await reranker.rerank(normalisedQuery, chunks);
+    const reranked = results
+      .map((result, idx) => ({
+        result: { ...result, score: parseFloat((rerankScores[idx] ?? result.score).toFixed(6)) },
+        rerankScore: parseFloat((rerankScores[idx] ?? result.score).toFixed(6)),
+        preRerankRank: idx + 1,
+      }))
+      .sort((a, b) => b.rerankScore - a.rerankScore)
+      .map((item, idx) => ({ ...item, postRerankRank: idx + 1 }));
+
+    // Slice to topK after reranking.
+    const rerankedTop = reranked.slice(0, topK);
 
     if (debug) {
-      _recordExplainStage(explainMap, results, "rerank", rerankLatencyMs);
+      const rerankLatencyMs = performance.now() - rerankT0;
+      rerankedTop.forEach(({ result, rerankScore, preRerankRank, postRerankRank }) => {
+        const key = _explainKey(result);
+        const stages = explainMap.get(key) ?? [];
+        const prevStage = stages[stages.length - 1];
+        stages.push({
+          stage: "rerank",
+          score: result.score,
+          rank: postRerankRank,
+          rankDelta: prevStage ? postRerankRank - prevStage.rank : 0,
+          latencyMs: parseFloat(rerankLatencyMs.toFixed(2)),
+          rerankScore,
+          preRerankRank,
+          postRerankRank,
+        });
+        explainMap.set(key, stages);
+      });
     }
+
+    results = rerankedTop.map(({ result }) => result);
+  } else if (cfg.rerankEnabled) {
+    // No candidates to rerank; just return empty.
+    results = [];
   }
 
   // Attach explain blocks to each result (only when debug=true).

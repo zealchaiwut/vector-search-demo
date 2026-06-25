@@ -8,11 +8,14 @@
  *   RETRIEVAL_TOP_K                    — max results to return (default: 10)
  *   RETRIEVAL_HYBRID_ENABLED           — enable hybrid dense+sparse fusion (default: false)
  *   RETRIEVAL_HYBRID_FUSION_WEIGHT     — dense/sparse blend weight 0–1 (default: 0.7)
+ *   RETRIEVAL_RRF_K                    — RRF constant k (default: 60)
  *   RETRIEVAL_RERANK_ENABLED           — enable cross-encoder reranking (default: false)
  *   RETRIEVAL_RERANK_MODEL_ID          — reranker model id (default: cross-encoder/ms-marco-MiniLM-L-6-v2)
+ *   RETRIEVAL_RERANK_CANDIDATE_COUNT   — candidates fetched before reranking (default: 50)
  *   RETRIEVAL_CHUNK_SIZE               — characters per chunk (default: 400)
  *   RETRIEVAL_CHUNK_OVERLAP            — character overlap between chunks (default: 80)
  *   RETRIEVAL_TEXT_NORMALISATION_ENABLED — normalise text before embedding (default: true)
+ *   RETRIEVAL_CHUNKING_MODE             — chunking strategy: 'length' or 'thai_word' (default: length)
  */
 
 // ---------------------------------------------------------------------------
@@ -48,33 +51,42 @@ export const PRESETS = {
     topK: 10,
     hybridEnabled: false,
     hybridFusionWeight: 1.0,
+    rrfK: 60,
     rerankEnabled: false,
     rerankModelId: "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    rerankCandidateCount: 50,
     chunkSize: 400,
     chunkOverlap: 80,
     textNormalisationEnabled: true,
+    chunkingMode: "length",
   },
   hybrid: {
     embeddingModelId: "Xenova/all-MiniLM-L6-v2",
     topK: 10,
     hybridEnabled: true,
     hybridFusionWeight: 0.7,
+    rrfK: 60,
     rerankEnabled: false,
     rerankModelId: "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    rerankCandidateCount: 50,
     chunkSize: 400,
     chunkOverlap: 80,
     textNormalisationEnabled: true,
+    chunkingMode: "length",
   },
   "hybrid-rerank": {
     embeddingModelId: "Xenova/all-MiniLM-L6-v2",
     topK: 10,
     hybridEnabled: true,
     hybridFusionWeight: 0.7,
+    rrfK: 60,
     rerankEnabled: true,
     rerankModelId: "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    rerankCandidateCount: 50,
     chunkSize: 400,
     chunkOverlap: 80,
     textNormalisationEnabled: true,
+    chunkingMode: "length",
   },
 };
 
@@ -94,11 +106,19 @@ export function defaultRetrievalConfig() {
       process.env.RETRIEVAL_EMBEDDING_MODEL_ID ?? "Xenova/all-MiniLM-L6-v2",
     topK: parseIntVal(process.env.RETRIEVAL_TOP_K, 10),
     hybridEnabled: parseBool(process.env.RETRIEVAL_HYBRID_ENABLED, false),
-    hybridFusionWeight: parseFloatVal(process.env.RETRIEVAL_HYBRID_FUSION_WEIGHT, 0.7),
+    hybridFusionWeight: parseFloatVal(
+      process.env.RETRIEVAL_HYBRID_FUSION_WEIGHT,
+      0.7,
+    ),
+    rrfK: parseIntVal(process.env.RETRIEVAL_RRF_K, 60),
     rerankEnabled: parseBool(process.env.RETRIEVAL_RERANK_ENABLED, false),
     rerankModelId:
       process.env.RETRIEVAL_RERANK_MODEL_ID ??
       "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    rerankCandidateCount: parseIntVal(
+      process.env.RETRIEVAL_RERANK_CANDIDATE_COUNT,
+      50,
+    ),
     chunkSize: parseIntVal(
       process.env.RETRIEVAL_CHUNK_SIZE ?? process.env.CHUNK_SIZE,
       400,
@@ -111,6 +131,7 @@ export function defaultRetrievalConfig() {
       process.env.RETRIEVAL_TEXT_NORMALISATION_ENABLED,
       true,
     ),
+    chunkingMode: process.env.RETRIEVAL_CHUNKING_MODE ?? "length",
   };
 }
 
@@ -129,22 +150,35 @@ export function parseConfigOverrides(params) {
   const out = {};
   if (params.embeddingModelId !== undefined)
     out.embeddingModelId = String(params.embeddingModelId);
-  if (params.topK !== undefined)
-    out.topK = parseIntVal(params.topK, undefined);
+  if (params.topK !== undefined) out.topK = parseIntVal(params.topK, undefined);
   if (params.hybridEnabled !== undefined)
     out.hybridEnabled = parseBool(params.hybridEnabled, undefined);
   if (params.hybridFusionWeight !== undefined)
-    out.hybridFusionWeight = parseFloatVal(params.hybridFusionWeight, undefined);
+    out.hybridFusionWeight = parseFloatVal(
+      params.hybridFusionWeight,
+      undefined,
+    );
+  if (params.rrfK !== undefined) out.rrfK = parseIntVal(params.rrfK, undefined);
   if (params.rerankEnabled !== undefined)
     out.rerankEnabled = parseBool(params.rerankEnabled, undefined);
   if (params.rerankModelId !== undefined)
     out.rerankModelId = String(params.rerankModelId);
+  if (params.rerankCandidateCount !== undefined)
+    out.rerankCandidateCount = parseIntVal(
+      params.rerankCandidateCount,
+      undefined,
+    );
   if (params.chunkSize !== undefined)
     out.chunkSize = parseIntVal(params.chunkSize, undefined);
   if (params.chunkOverlap !== undefined)
     out.chunkOverlap = parseIntVal(params.chunkOverlap, undefined);
   if (params.textNormalisationEnabled !== undefined)
-    out.textNormalisationEnabled = parseBool(params.textNormalisationEnabled, undefined);
+    out.textNormalisationEnabled = parseBool(
+      params.textNormalisationEnabled,
+      undefined,
+    );
+  if (params.chunkingMode !== undefined)
+    out.chunkingMode = String(params.chunkingMode);
   return out;
 }
 

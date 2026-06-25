@@ -12,18 +12,29 @@ for download. Includes a recall@k evaluation harness.
 ### ✅ Built and verified end-to-end
 - **CLI** (`init`, `ingest`, `search`, `serve`, `ping`) via `node dist/cli.js <cmd>`.
 - **Ingestion pipeline** — a small built-in corpus (7 docs including a Thai article in
-  `src/data/generator.js`) is chunked into overlapping 400-character windows (80-char
-  overlap, character-based for Thai compatibility), embedded using multilingual-e5-small
-  (384-dim, `src/embeddings/index.js`), stored in Milvus (`MILVUS_HOST` set) or a local
-  `collection.json` fallback, and saved as downloadable `.txt` files under `attachments/`.
-  Chunk size and overlap are configurable via `CHUNK_SIZE` and `CHUNK_OVERLAP` env vars.
-- **Search** — `search/index.js` embeds the query with the `query:` e5 instruction prefix and
-  runs ANN search via Milvus (HNSW COSINE, EF=64 over-fetch, chunk collapsing per article)
-  when `MILVUS_HOST` is set, or falls back to a linear cosine scan over `collection.json`.
-  Each result includes a `passages` array (top-scoring deduplicated chunks with per-chunk
-  scores) and a `chunks` array (all matched chunks for the article, each with `text` and
-  `score`) in addition to `best_passage`. The number of chunk hits surfaced per article is
-  capped by `SEARCH_MAX_CHUNKS` (default 3) or the `n` query parameter on `/search`.
+  `src/data/generator.js`) is chunked, normalised, embedded, stored, and saved as
+  downloadable `.txt` files under `attachments/`. Two chunking modes are available via
+  `RETRIEVAL_CHUNKING_MODE`: `length` (default — overlapping 400-character windows, 80-char
+  overlap, character-based for Thai compatibility) and `thai_word` (splits on
+  paragraph/newline boundaries first, then uses `Intl.Segmenter("th", {granularity:"word"})`
+  for paragraphs exceeding `chunkSize`; falls back to `length` if the segmenter is
+  unavailable). Chunk size and overlap are configurable via `CHUNK_SIZE` / `CHUNK_OVERLAP`
+  env vars. Text is normalised (Thai-aware Unicode normalisation, controlled by
+  `RETRIEVAL_TEXT_NORMALISATION_ENABLED`) before embedding, matching query-time normalisation.
+  Embeddings use multilingual-e5-small (384-dim, `src/embeddings/index.js`) and are stored in
+  Milvus (`MILVUS_HOST` set) or a local `collection.json` fallback.
+- **Search** — `search/index.js` normalises the query (Thai-aware Unicode normalisation),
+  embeds it with the `query:` e5 instruction prefix, and runs ANN search via Milvus (HNSW
+  COSINE, EF=64 over-fetch) or Postgres (pgvector cosine) or a linear cosine scan over
+  `collection.json`. When `hybridEnabled` is true, a parallel lexical search runs (pg_trgm
+  trigram search on Postgres; TF-IDF term-frequency scoring on the file backend) and both
+  result lists are merged with Reciprocal Rank Fusion (RRF). When `rerankEnabled` is true,
+  a cross-encoder reranker (`src/search/reranker.js`) rescores the fused candidate pool
+  before final top-k truncation. Each result includes a `passages` array (top-scoring
+  deduplicated chunks with per-chunk scores) and a `chunks` array (all matched chunks,
+  each with `text` and `score`) in addition to `best_passage`. The number of chunk hits
+  surfaced per article is capped by `SEARCH_MAX_CHUNKS` (default 3) or the `n` query
+  parameter on `/search`.
 - **Exact/keyword search** — `GET /search/exact` runs Postgres FTS (`plainto_tsquery` +
   `ts_rank` over a GIN-indexed `tsvector` column). Only active when `DB_BACKEND=postgres`.
 - **Configuration Audit Tool (Compare tab)** — the search UI has a side-by-side tab
@@ -169,7 +180,8 @@ Search result shape (`GET /search`):
     "rerankModelId": "cross-encoder/ms-marco-MiniLM-L-6-v2",
     "chunkSize": 400,
     "chunkOverlap": 80,
-    "textNormalisationEnabled": true
+    "textNormalisationEnabled": true,
+    "chunkingMode": "length"
   },
   "activePreset": "hybrid-rerank"
 }
@@ -299,7 +311,7 @@ Copy `.env.example` to `.env`.
 | `MILVUS_ADDRESS` | `localhost:19530` | Fallback gRPC address for `ping` and the schema helpers when `MILVUS_HOST`/`MILVUS_PORT` are unset |
 | `COLLECTION_NAME` | `documents` | Milvus collection name |
 | `EMBEDDING_MODEL` | `Xenova/multilingual-e5-small` | Embedding model used by `ingest` and `re-embed`. The first ingest run downloads ~90 MB from HuggingFace; subsequent runs use the cached model. Supports Thai and other scripts via the e5 instruction format (`passage:` / `query:` prefixes). |
-| `DIM` | `384` | Embedding dimension — must match the model output (384 for multilingual-e5-small). A mismatch raises a clear error at ingest time. |
+| `DIM` | (auto) | Embedding dimension — **no longer required**; automatically derived from `EMBEDDING_MODEL` via `src/embeddings/model-registry.js`. Changing `EMBEDDING_MODEL` to a different-dimension model requires `commander re-embed --recreate` on the postgres backend. |
 | `CHUNK_SIZE` | `400` | Characters per chunk used by `ingest` and `rechunk`. Character-based (not whitespace), so Thai text is handled correctly. |
 | `CHUNK_OVERLAP` | `80` | Character overlap between consecutive chunks for `ingest` and `rechunk`. |
 | `SEARCH_MAX_CHUNKS` | `3` | Maximum number of chunk hits to surface per article in search results. Can also be overridden per-request with the `n` query parameter on `GET /search`. |
@@ -312,13 +324,16 @@ Copy `.env.example` to `.env`.
 | `RETRIEVAL_CHUNK_SIZE` | `400` | Per-request chunk size default (falls back to `CHUNK_SIZE`). |
 | `RETRIEVAL_CHUNK_OVERLAP` | `80` | Per-request chunk overlap default (falls back to `CHUNK_OVERLAP`). |
 | `RETRIEVAL_TEXT_NORMALISATION_ENABLED` | `true` | Normalise text before embedding by default. |
+| `RETRIEVAL_CHUNKING_MODE` | `length` | Chunking strategy: `length` (character-window) or `thai_word` (word-boundary via `Intl.Segmenter`). `thai_word` splits on paragraph/newline boundaries first, then uses the Thai word segmenter for paragraphs exceeding `chunkSize`; falls back to `length` if the segmenter is unavailable. |
 
 ## Architecture (current path)
 
 ```
 src/data/generator.js   built-in 7-doc corpus (6 English + 1 Thai)
-  -> src/data/chunker.js         character-window chunks (400 chars / 80 overlap; override
-                                 via CHUNK_SIZE and CHUNK_OVERLAP env vars)
+  -> src/data/chunker.js         chunking: 'length' mode = character-window chunks (400 chars /
+                                 80 overlap; CHUNK_SIZE/CHUNK_OVERLAP env vars); 'thai_word' mode =
+                                 paragraph-boundary split then Intl.Segmenter word boundaries for
+                                 long paragraphs (RETRIEVAL_CHUNKING_MODE=thai_word)
   -> src/data/embedder.js        384-dim multilingual-e5-small vectors (via src/embeddings/index.js)
                                  each chunk prefixed "passage: " per e5 instruction format
   -> src/data/collection.js  ->  Milvus (when MILVUS_HOST is set)
@@ -333,11 +348,18 @@ src/commands/verify.js    integrity check: every article has ≥1 chunk, every c
 
 src/config/retrieval.js  RetrievalConfig: env-var defaults, named presets (dense-only,
                          hybrid, hybrid-rerank), per-request override parsing and resolution
-src/search/index.js  embeds query with "query: " e5 prefix, queries Milvus (HNSW COSINE ANN)
-                     or Postgres (pgvector cosine) or falls back to linear cosine scan over
-                     collection.json; groups chunk hits by article_id (capped at
-                     SEARCH_MAX_CHUNKS per article); returns passages and chunks per result;
+src/text/normalise.js      Unicode / Thai-aware text normalisation applied at ingest and query time
+src/embeddings/model-registry.js  Registry of supported embedding models; resolves EMBEDDING_MODEL
+                                   to Xenova model ID, dimension, and sparse flag
+src/search/index.js  normalises query, embeds with "query: " e5 prefix, runs dense ANN search
+                     (Milvus / pgvector / file cosine); if hybridEnabled runs parallel lexical
+                     search (pg_trgm on Postgres, TF-IDF on file backend) and fuses both lists
+                     with RRF (src/search/rrf.js); if rerankEnabled rescores the candidate pool
+                     via cross-encoder (src/search/reranker.js); groups chunk hits by article_id
+                     (capped at SEARCH_MAX_CHUNKS); returns passages and chunks per result;
                      optional debug explain trail (per-stage score/rank/latency) per result
+src/core/lexical/index.js  Postgres lexical search via pg_trgm word_similarity + ts_rank
+src/core/lexical/trigramScorer.js  Scoring helpers for trigram-based Thai lexical search
 src/milvus/client.js   singleton MilvusClient wrapper (dynamic SDK import)
 src/milvus/schema.ts   Milvus collection schema: HNSW index, COSINE metric, dim=384
 src/server.mjs       HTTP: /health, /search (GET+POST, preset/config overrides, debug mode),

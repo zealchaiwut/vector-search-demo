@@ -10,10 +10,12 @@ async function getEmbedder() {
 }
 
 /**
- * Batch-embed an array of chunks using multilingual-e5-small via createEmbedder.
- * Each chunk's details is prefixed with "passage: " as required by the e5 instruction format.
+ * Batch-embed an array of chunks using the configured EMBEDDING_MODEL.
+ * Each chunk's details is prefixed with "passage: " as required by e5 instruction format.
+ * For BGE-M3, also generates and attaches sparse_embedding alongside the dense embedding.
  * @param {Array<object>} chunks - each has at least a `details` field
- * @returns {Promise<Array<object>>} same chunks with `embedding` field added (384 floats each)
+ * @returns {Promise<Array<object>>} same chunks with `embedding` (and optionally
+ *   `sparse_embedding`) added
  */
 export async function batchEmbed(chunks) {
   if (chunks.length === 0) return [];
@@ -28,8 +30,18 @@ export async function batchEmbed(chunks) {
     );
   }
 
-  return chunks.map((chunk, i) => ({
+  const result = chunks.map((chunk, i) => ({
     ...chunk,
     embedding: vectors[i],
   }));
+
+  // For BGE-M3, attach sparse vectors for the lexical hybrid-search component.
+  if (embedder.sparse) {
+    const sparseVecs = await embedder.embedSparse(texts);
+    for (let i = 0; i < result.length; i++) {
+      result[i].sparse_embedding = sparseVecs[i] ?? {};
+    }
+  }
+
+  return result;
 }
