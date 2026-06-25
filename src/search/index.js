@@ -25,6 +25,7 @@ import { flattenChunkResults } from "./flattenResults.js";
 import { defaultRetrievalConfig } from "../config/retrieval.js";
 import { mergeRrf } from "./rrf.js";
 import { Reranker } from "./reranker.js";
+import { normalise } from "../text/normalise.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -537,6 +538,9 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   const topK = cfg.topK ?? k;
   const maxChunks = getMaxChunks(maxChunksPerArticle);
 
+  // Normalise query text before embedding (same module used at ingest time)
+  const normalisedQuery = normalise(query, cfg.textNormalisationEnabled);
+
   // When reranking is enabled, retrieve a larger candidate pool before reranking.
   const rerankCandidateCount = cfg.rerankCandidateCount ?? 50;
   const retrievalK = cfg.rerankEnabled ? Math.max(topK, rerankCandidateCount) : topK;
@@ -545,11 +549,11 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   const denseT0 = performance.now();
   let grouped;
   if (usePostgres()) {
-    grouped = await _searchPostgres(query, retrievalK, maxChunks);
+    grouped = await _searchPostgres(normalisedQuery, retrievalK, maxChunks);
   } else if (useMilvus()) {
-    grouped = await _searchMilvus(query, retrievalK, maxChunks);
+    grouped = await _searchMilvus(normalisedQuery, retrievalK, maxChunks);
   } else {
-    grouped = await _searchFile(query, retrievalK, maxChunks);
+    grouped = await _searchFile(normalisedQuery, retrievalK, maxChunks);
   }
   let results = flattenChunkResults(grouped);
   const denseLatencyMs = performance.now() - denseT0;
@@ -572,7 +576,7 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
         const { getPgStore } = await import("../store/PgVectorStore.js");
         const { searchLexical } = await import("../core/lexical/index.js");
         const store = getPgStore();
-        const lexRows = await searchLexical(store, query, topK);
+        const lexRows = await searchLexical(store, normalisedQuery, topK);
         lexicalResults = lexRows.map((row) => {
           const text = (row.details ?? "").replace(/\s+/g, " ").trim();
           return {
@@ -592,7 +596,7 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
         });
       } else if (!useMilvus()) {
         // File-backed backend: use term-frequency lexical scorer.
-        lexicalResults = _lexicalSearchFile(query, topK);
+        lexicalResults = _lexicalSearchFile(normalisedQuery, topK);
       }
       // Milvus has no native lexical path; lexicalResults stays [].
     } catch {
@@ -621,7 +625,7 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
     const rerankT0 = performance.now();
 
     const reranker = new Reranker();
-    const reranked = reranker.rerank(query, results);
+    const reranked = reranker.rerank(normalisedQuery, results);
 
     // Slice to topK after reranking.
     const rerankedTop = reranked.slice(0, topK);

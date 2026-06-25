@@ -5,6 +5,8 @@ import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBackend, logActiveBackend, getStore } from "../store/factory.js";
+import { normalise } from "../text/normalise.js";
+import { defaultRetrievalConfig } from "../config/retrieval.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..", "..");
@@ -37,11 +39,20 @@ export async function runIngest() {
     );
   }
 
+  const { textNormalisationEnabled } = defaultRetrievalConfig();
+
   // Chunk all articles
   const chunks = chunkDocuments(articles);
 
+  // Normalise chunk text before embedding (shared path with query-time normalisation)
+  const normalisedChunks = chunks.map((c) => ({
+    ...c,
+    headline: normalise(c.headline, textNormalisationEnabled),
+    details: normalise(c.details, textNormalisationEnabled),
+  }));
+
   // Batch-embed all chunks at once
-  const embeddedChunks = await batchEmbed(chunks);
+  const embeddedChunks = await batchEmbed(normalisedChunks);
 
   // Build rows for collection upsert
   const rows = embeddedChunks.map((c) => ({
