@@ -106,13 +106,19 @@ export function defaultRetrievalConfig() {
       process.env.RETRIEVAL_EMBEDDING_MODEL_ID ?? "Xenova/all-MiniLM-L6-v2",
     topK: parseIntVal(process.env.RETRIEVAL_TOP_K, 10),
     hybridEnabled: parseBool(process.env.RETRIEVAL_HYBRID_ENABLED, false),
-    hybridFusionWeight: parseFloatVal(process.env.RETRIEVAL_HYBRID_FUSION_WEIGHT, 0.7),
+    hybridFusionWeight: parseFloatVal(
+      process.env.RETRIEVAL_HYBRID_FUSION_WEIGHT,
+      0.7,
+    ),
     rrfK: parseIntVal(process.env.RETRIEVAL_RRF_K, 60),
     rerankEnabled: parseBool(process.env.RETRIEVAL_RERANK_ENABLED, false),
     rerankModelId:
       process.env.RETRIEVAL_RERANK_MODEL_ID ??
       "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    rerankCandidateCount: parseIntVal(process.env.RETRIEVAL_RERANK_CANDIDATE_COUNT, 50),
+    rerankCandidateCount: parseIntVal(
+      process.env.RETRIEVAL_RERANK_CANDIDATE_COUNT,
+      50,
+    ),
     chunkSize: parseIntVal(
       process.env.RETRIEVAL_CHUNK_SIZE ?? process.env.CHUNK_SIZE,
       400,
@@ -144,26 +150,33 @@ export function parseConfigOverrides(params) {
   const out = {};
   if (params.embeddingModelId !== undefined)
     out.embeddingModelId = String(params.embeddingModelId);
-  if (params.topK !== undefined)
-    out.topK = parseIntVal(params.topK, undefined);
+  if (params.topK !== undefined) out.topK = parseIntVal(params.topK, undefined);
   if (params.hybridEnabled !== undefined)
     out.hybridEnabled = parseBool(params.hybridEnabled, undefined);
   if (params.hybridFusionWeight !== undefined)
-    out.hybridFusionWeight = parseFloatVal(params.hybridFusionWeight, undefined);
-  if (params.rrfK !== undefined)
-    out.rrfK = parseIntVal(params.rrfK, undefined);
+    out.hybridFusionWeight = parseFloatVal(
+      params.hybridFusionWeight,
+      undefined,
+    );
+  if (params.rrfK !== undefined) out.rrfK = parseIntVal(params.rrfK, undefined);
   if (params.rerankEnabled !== undefined)
     out.rerankEnabled = parseBool(params.rerankEnabled, undefined);
   if (params.rerankModelId !== undefined)
     out.rerankModelId = String(params.rerankModelId);
   if (params.rerankCandidateCount !== undefined)
-    out.rerankCandidateCount = parseIntVal(params.rerankCandidateCount, undefined);
+    out.rerankCandidateCount = parseIntVal(
+      params.rerankCandidateCount,
+      undefined,
+    );
   if (params.chunkSize !== undefined)
     out.chunkSize = parseIntVal(params.chunkSize, undefined);
   if (params.chunkOverlap !== undefined)
     out.chunkOverlap = parseIntVal(params.chunkOverlap, undefined);
   if (params.textNormalisationEnabled !== undefined)
-    out.textNormalisationEnabled = parseBool(params.textNormalisationEnabled, undefined);
+    out.textNormalisationEnabled = parseBool(
+      params.textNormalisationEnabled,
+      undefined,
+    );
   if (params.chunkingMode !== undefined)
     out.chunkingMode = String(params.chunkingMode);
   return out;

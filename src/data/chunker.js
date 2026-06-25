@@ -25,7 +25,11 @@ export const CHUNKING_MODE = {
  * @param {number} overlap - character overlap between consecutive chunks (default CHUNK_OVERLAP)
  * @returns {Array<{id, headline, details, attachment_url}>}
  */
-export function chunkDocument(article, chunkSize = CHUNK_SIZE, overlap = CHUNK_OVERLAP) {
+export function chunkDocument(
+  article,
+  chunkSize = CHUNK_SIZE,
+  overlap = CHUNK_OVERLAP,
+) {
   const sz = parseInt(process.env.CHUNK_SIZE ?? "", 10) || chunkSize;
   const ov = parseInt(process.env.CHUNK_OVERLAP ?? "", 10) || overlap;
   const { id, headline, details } = article;
@@ -110,14 +114,17 @@ function _splitParagraphAtWordBoundaries(para, chunkSize, segmenter) {
  * @param {number} [options.overlap] - overlap for length-mode fallback (default CHUNK_OVERLAP)
  * @returns {Array<{id, headline, details, attachment_url}>}
  */
-export function chunkDocumentThai(article, chunkSize = CHUNK_SIZE, options = {}) {
+export function chunkDocumentThai(
+  article,
+  chunkSize = CHUNK_SIZE,
+  options = {},
+) {
   const { id, headline } = article;
   const text = (article.details ?? "").trim();
   if (text.length === 0) return [];
 
   const warn =
-    options.warn ??
-    ((msg) => process.stderr.write(`[chunker] ${msg}\n`));
+    options.warn ?? ((msg) => process.stderr.write(`[chunker] ${msg}\n`));
   const segmenterFactory =
     options._segmenterFactory ?? _defaultThaiSegmenterFactory;
   const overlap = options.overlap ?? CHUNK_OVERLAP;
