@@ -21,7 +21,7 @@ import { searchDocuments } from "./search/index.js";
 import { resolveRetrievalConfig, parseConfigOverrides, KNOWN_PRESETS } from "./config/retrieval.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
-import { validateArticle, validateArticleId, getArticleIdError } from "./data/articleValidation.js";
+import { validateArticle, getArticleIdError } from "./data/articleValidation.js";
 import { chunkDocument } from "./data/chunker.js";
 import { usePostgres } from "./data/backend.js";
 import { extractPdfText } from "./pdf/index.js";
