@@ -13,8 +13,6 @@ AC7 - Unit tests cover: mid-word split prevention, paragraph-boundary preference
 import os
 import subprocess
 import json
-import tempfile
-import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHUNKER_JS = os.path.join(REPO_ROOT, "src", "data", "chunker.js")
@@ -183,7 +181,7 @@ console.log("COMPARISON_COMPLETE");
 """
     stdout, stderr, rc = _run_node(script)
     if rc != 0:
-        pytest.skip(f"Thai word chunking not yet implemented")
+        pytest.skip("Thai word chunking not yet implemented")
     assert "COMPARISON_COMPLETE" in stdout
 
 
@@ -457,7 +455,7 @@ console.log("PARAGRAPH_EDGE_CASE_TESTED");
 """
     stdout, stderr, rc = _run_node(script)
     if rc != 0:
-        pytest.skip(f"Paragraph-aware chunking not yet implemented")
+        pytest.skip("Paragraph-aware chunking not yet implemented")
 
 
 def test_length_cap_enforcement_strict_limit():
@@ -490,7 +488,7 @@ if (maxLenFound <= maxSize) {{
 """
     stdout, stderr, rc = _run_node(script)
     if rc != 0:
-        pytest.skip(f"Chunking edge case not yet tested")
+        pytest.skip("Chunking edge case not yet tested")
 
 
 def test_fallback_behavior_non_english():
@@ -514,7 +512,7 @@ if (chunks.length > 0) {{
 """
     stdout, stderr, rc = _run_node(script)
     if rc != 0:
-        pytest.skip(f"Feature not implemented yet")
+        pytest.skip("Feature not implemented yet")
 
 
 def test_length_mode_no_regression_with_config_option():
