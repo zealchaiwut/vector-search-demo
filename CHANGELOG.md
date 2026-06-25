@@ -3,6 +3,10 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 13.1 (2026-06-25)
+
+- #140: Add Thai word-boundary chunking mode behind config flag
+
 ## Sprint 13 (2026-06-25)
 
 - #135: Add trigram-based lexical search for Thai text
