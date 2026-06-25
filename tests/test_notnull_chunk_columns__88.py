@@ -94,7 +94,7 @@ def test_ac4_migration_numbered_after_002():
     notnull_num = int(notnull_file.split("_")[0])
 
     # Find 002_chunk_columns.sql number
-    backfill_files = [f for f in chunk_files if not "notnull" in f.lower()]
+    backfill_files = [f for f in chunk_files if "notnull" not in f.lower()]
     assert backfill_files, "Expected 002_chunk_columns.sql to still exist."
     backfill_num = int(backfill_files[0].split("_")[0])
 
