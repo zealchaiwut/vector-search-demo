@@ -8,6 +8,7 @@
  *   RETRIEVAL_TOP_K                    — max results to return (default: 10)
  *   RETRIEVAL_HYBRID_ENABLED           — enable hybrid dense+sparse fusion (default: false)
  *   RETRIEVAL_HYBRID_FUSION_WEIGHT     — dense/sparse blend weight 0–1 (default: 0.7)
+ *   RETRIEVAL_RRF_K                    — RRF constant k (default: 60)
  *   RETRIEVAL_RERANK_ENABLED           — enable cross-encoder reranking (default: false)
  *   RETRIEVAL_RERANK_MODEL_ID          — reranker model id (default: cross-encoder/ms-marco-MiniLM-L-6-v2)
  *   RETRIEVAL_CHUNK_SIZE               — characters per chunk (default: 400)
@@ -48,6 +49,7 @@ export const PRESETS = {
     topK: 10,
     hybridEnabled: false,
     hybridFusionWeight: 1.0,
+    rrfK: 60,
     rerankEnabled: false,
     rerankModelId: "cross-encoder/ms-marco-MiniLM-L-6-v2",
     chunkSize: 400,
@@ -59,6 +61,7 @@ export const PRESETS = {
     topK: 10,
     hybridEnabled: true,
     hybridFusionWeight: 0.7,
+    rrfK: 60,
     rerankEnabled: false,
     rerankModelId: "cross-encoder/ms-marco-MiniLM-L-6-v2",
     chunkSize: 400,
@@ -70,6 +73,7 @@ export const PRESETS = {
     topK: 10,
     hybridEnabled: true,
     hybridFusionWeight: 0.7,
+    rrfK: 60,
     rerankEnabled: true,
     rerankModelId: "cross-encoder/ms-marco-MiniLM-L-6-v2",
     chunkSize: 400,
@@ -95,6 +99,7 @@ export function defaultRetrievalConfig() {
     topK: parseIntVal(process.env.RETRIEVAL_TOP_K, 10),
     hybridEnabled: parseBool(process.env.RETRIEVAL_HYBRID_ENABLED, false),
     hybridFusionWeight: parseFloatVal(process.env.RETRIEVAL_HYBRID_FUSION_WEIGHT, 0.7),
+    rrfK: parseIntVal(process.env.RETRIEVAL_RRF_K, 60),
     rerankEnabled: parseBool(process.env.RETRIEVAL_RERANK_ENABLED, false),
     rerankModelId:
       process.env.RETRIEVAL_RERANK_MODEL_ID ??
@@ -135,6 +140,8 @@ export function parseConfigOverrides(params) {
     out.hybridEnabled = parseBool(params.hybridEnabled, undefined);
   if (params.hybridFusionWeight !== undefined)
     out.hybridFusionWeight = parseFloatVal(params.hybridFusionWeight, undefined);
+  if (params.rrfK !== undefined)
+    out.rrfK = parseIntVal(params.rrfK, undefined);
   if (params.rerankEnabled !== undefined)
     out.rerankEnabled = parseBool(params.rerankEnabled, undefined);
   if (params.rerankModelId !== undefined)
