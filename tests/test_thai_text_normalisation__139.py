@@ -21,9 +21,7 @@ AC9 — Normalization is applied identically by the same code path at both
 
 import json
 import os
-import re
 import subprocess
-import unicodedata
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NORMALISE_JS = os.path.join(REPO_ROOT, "src", "text", "normalise.js")
