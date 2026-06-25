@@ -60,14 +60,32 @@ async function _ocrPage(pdfProxy, pageNum, ocr) {
     return '';
   }
 
-  // Combine multiple image fragments (top-to-bottom by y offset) or use largest
-  const target = images.reduce((a, b) =>
-    a.width * a.height >= b.width * b.height ? a : b
+  // Convert every fragment to PNG, then composite all of them top-to-bottom.
+  // This ensures text in every fragment on a scanned page reaches OCR.
+  const fragmentBuffers = await Promise.all(
+    images.map((img) =>
+      sharp(Buffer.from(img.data.buffer), {
+        raw: { width: img.width, height: img.height, channels: img.channels },
+      })
+        .png()
+        .toBuffer()
+    )
   );
 
-  const imageBuffer = await sharp(Buffer.from(target.data.buffer), {
-    raw: { width: target.width, height: target.height, channels: target.channels },
+  const totalHeight = images.reduce((sum, img) => sum + img.height, 0);
+  const maxWidth = Math.max(...images.map((img) => img.width));
+
+  let yOffset = 0;
+  const composites = fragmentBuffers.map((buf, i) => {
+    const entry = { input: buf, top: yOffset, left: 0 };
+    yOffset += images[i].height;
+    return entry;
+  });
+
+  const imageBuffer = await sharp({
+    create: { width: maxWidth, height: totalHeight, channels: 3, background: { r: 255, g: 255, b: 255 } },
   })
+    .composite(composites)
     .png()
     .toBuffer();
 
