@@ -9,12 +9,17 @@ Usage:
   python3 src/eval/run_ablation.py [options]
 
 Options:
-  --config FILE    Preset config file (YAML or JSON). Default: ablation_presets.json
-                   in the same directory as this script.
-  --output FILE    Write results to FILE (JSON or CSV).
-  --search-url URL Search endpoint (default: http://localhost:7070/search).
-  --k N            Top-k for retrieval metrics (default: 10).
-  --dataset FILE   Path to the eval dataset JSON (default: thai_eval_set.json).
+  --config FILE          Preset config file (YAML or JSON). Default: ablation_presets.json
+                         in the same directory as this script.
+  --output FILE          Write results to FILE (JSON or CSV).
+  --search-url URL       Search endpoint (default: http://localhost:7070/search).
+  --k N                  Top-k for retrieval metrics (default: 10).
+  --dataset FILE         Path to the eval dataset JSON (default: thai_eval_set.json).
+  --embedding-model MODEL  Override the embedding model for this run (e.g.
+                           multilingual-e5-base, multilingual-e5-large, BAAI/bge-m3).
+                           Recorded in the output file for longitudinal comparison.
+                           Does NOT restart the server — set EMBEDDING_MODEL in the
+                           server's environment and re-embed before comparing models.
 
 Config format (JSON):
   {
@@ -202,14 +207,14 @@ def print_table(results: list, k: int) -> None:
     print(sep)
 
 
-def save_output(results: list, k: int, output_path: str, timestamp: str) -> None:
+def save_output(results: list, k: int, output_path: str, timestamp: str, embedding_model=None) -> None:
     if output_path.lower().endswith(".csv"):
-        _save_csv(results, k, output_path, timestamp)
+        _save_csv(results, k, output_path, timestamp, embedding_model=embedding_model)
     else:
-        _save_json(results, k, output_path, timestamp)
+        _save_json(results, k, output_path, timestamp, embedding_model=embedding_model)
 
 
-def _save_json(results: list, k: int, path: str, timestamp: str) -> None:
+def _save_json(results: list, k: int, path: str, timestamp: str, embedding_model=None) -> None:
     presets_out = [
         {
             "name": r["name"],
@@ -227,18 +232,21 @@ def _save_json(results: list, k: int, path: str, timestamp: str) -> None:
         "k": k,
         "presets": presets_out,
     }
+    if embedding_model:
+        data["embedding_model"] = embedding_model
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def _save_csv(results: list, k: int, path: str, timestamp: str) -> None:
-    fieldnames = ["timestamp", "preset", f"recall_at_{k}", "ndcg", "mrr", "latency_ms", "n_queries", "n_errors"]
+def _save_csv(results: list, k: int, path: str, timestamp: str, embedding_model=None) -> None:
+    fieldnames = ["timestamp", "embedding_model", "preset", f"recall_at_{k}", "ndcg", "mrr", "latency_ms", "n_queries", "n_errors"]
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for r in results:
             writer.writerow({
                 "timestamp": timestamp,
+                "embedding_model": embedding_model or "",
                 "preset": r["name"],
                 f"recall_at_{k}": f"{r['recall']:.4f}",
                 "ndcg": f"{r['ndcg']:.4f}",
@@ -285,6 +293,18 @@ def main() -> None:
         default=_DEFAULT_DATASET,
         help=f"Eval dataset JSON file. Default: {_DEFAULT_DATASET}",
     )
+    parser.add_argument(
+        "--embedding-model",
+        default=None,
+        dest="embedding_model",
+        help=(
+            "Embedding model used by the search server being evaluated "
+            "(e.g. multilingual-e5-base, multilingual-e5-large, BAAI/bge-m3). "
+            "Recorded in the output file for longitudinal model comparison. "
+            "Does not restart the server — set EMBEDDING_MODEL server-side and "
+            "run re-embed before switching."
+        ),
+    )
     args = parser.parse_args()
 
     # Load presets
@@ -305,8 +325,10 @@ def main() -> None:
 
     timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     k = args.k
+    embedding_model = args.embedding_model
 
-    print(f"Running ablation with {len(presets)} preset(s) against {len(entries)} queries (k={k})…")
+    model_label = f" [model: {embedding_model}]" if embedding_model else ""
+    print(f"Running ablation with {len(presets)} preset(s) against {len(entries)} queries (k={k}){model_label}…")
     print()
 
     results = []
@@ -361,7 +383,7 @@ def main() -> None:
     # Save output file
     if args.output:
         all_for_output = [r for r in results if not r.get("_failed")]
-        save_output(all_for_output, k, args.output, timestamp)
+        save_output(all_for_output, k, args.output, timestamp, embedding_model=embedding_model)
         print(f"\nResults written to: {args.output}")
 
     if failed and not good:
