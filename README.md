@@ -12,11 +12,17 @@ for download. Includes a recall@k evaluation harness.
 ### ✅ Built and verified end-to-end
 - **CLI** (`init`, `ingest`, `search`, `serve`, `ping`) via `node dist/cli.js <cmd>`.
 - **Ingestion pipeline** — a small built-in corpus (7 docs including a Thai article in
-  `src/data/generator.js`) is chunked into overlapping 400-character windows (80-char
-  overlap, character-based for Thai compatibility), embedded using multilingual-e5-small
-  (384-dim, `src/embeddings/index.js`), stored in Milvus (`MILVUS_HOST` set) or a local
-  `collection.json` fallback, and saved as downloadable `.txt` files under `attachments/`.
-  Chunk size and overlap are configurable via `CHUNK_SIZE` and `CHUNK_OVERLAP` env vars.
+  `src/data/generator.js`) is chunked, normalised, embedded, stored, and saved as
+  downloadable `.txt` files under `attachments/`. Two chunking modes are available via
+  `RETRIEVAL_CHUNKING_MODE`: `length` (default — overlapping 400-character windows, 80-char
+  overlap, character-based for Thai compatibility) and `thai_word` (splits on
+  paragraph/newline boundaries first, then uses `Intl.Segmenter("th", {granularity:"word"})`
+  for paragraphs exceeding `chunkSize`; falls back to `length` if the segmenter is
+  unavailable). Chunk size and overlap are configurable via `CHUNK_SIZE` / `CHUNK_OVERLAP`
+  env vars. Text is normalised (Thai-aware Unicode normalisation, controlled by
+  `RETRIEVAL_TEXT_NORMALISATION_ENABLED`) before embedding, matching query-time normalisation.
+  Embeddings use multilingual-e5-small (384-dim, `src/embeddings/index.js`) and are stored in
+  Milvus (`MILVUS_HOST` set) or a local `collection.json` fallback.
 - **Search** — `search/index.js` normalises the query (Thai-aware Unicode normalisation),
   embeds it with the `query:` e5 instruction prefix, and runs ANN search via Milvus (HNSW
   COSINE, EF=64 over-fetch) or Postgres (pgvector cosine) or a linear cosine scan over
@@ -174,7 +180,8 @@ Search result shape (`GET /search`):
     "rerankModelId": "cross-encoder/ms-marco-MiniLM-L-6-v2",
     "chunkSize": 400,
     "chunkOverlap": 80,
-    "textNormalisationEnabled": true
+    "textNormalisationEnabled": true,
+    "chunkingMode": "length"
   },
   "activePreset": "hybrid-rerank"
 }
@@ -317,13 +324,16 @@ Copy `.env.example` to `.env`.
 | `RETRIEVAL_CHUNK_SIZE` | `400` | Per-request chunk size default (falls back to `CHUNK_SIZE`). |
 | `RETRIEVAL_CHUNK_OVERLAP` | `80` | Per-request chunk overlap default (falls back to `CHUNK_OVERLAP`). |
 | `RETRIEVAL_TEXT_NORMALISATION_ENABLED` | `true` | Normalise text before embedding by default. |
+| `RETRIEVAL_CHUNKING_MODE` | `length` | Chunking strategy: `length` (character-window) or `thai_word` (word-boundary via `Intl.Segmenter`). `thai_word` splits on paragraph/newline boundaries first, then uses the Thai word segmenter for paragraphs exceeding `chunkSize`; falls back to `length` if the segmenter is unavailable. |
 
 ## Architecture (current path)
 
 ```
 src/data/generator.js   built-in 7-doc corpus (6 English + 1 Thai)
-  -> src/data/chunker.js         character-window chunks (400 chars / 80 overlap; override
-                                 via CHUNK_SIZE and CHUNK_OVERLAP env vars)
+  -> src/data/chunker.js         chunking: 'length' mode = character-window chunks (400 chars /
+                                 80 overlap; CHUNK_SIZE/CHUNK_OVERLAP env vars); 'thai_word' mode =
+                                 paragraph-boundary split then Intl.Segmenter word boundaries for
+                                 long paragraphs (RETRIEVAL_CHUNKING_MODE=thai_word)
   -> src/data/embedder.js        384-dim multilingual-e5-small vectors (via src/embeddings/index.js)
                                  each chunk prefixed "passage: " per e5 instruction format
   -> src/data/collection.js  ->  Milvus (when MILVUS_HOST is set)
