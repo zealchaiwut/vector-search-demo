@@ -23,6 +23,7 @@ import { createEmbedder } from "../embeddings/index.js";
 import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
 import { flattenChunkResults } from "./flattenResults.js";
 import { defaultRetrievalConfig } from "../config/retrieval.js";
+import { mergeRrf } from "./rrf.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -346,6 +347,65 @@ async function _searchFile(query, k, maxChunks) {
 }
 
 // ---------------------------------------------------------------------------
+// File-backed lexical search (term-frequency scoring)
+// ---------------------------------------------------------------------------
+
+/**
+ * Simple term-frequency lexical scorer for the file-backed collection.
+ * Returns flat chunk rows sorted by descending lexical score.
+ *
+ * @param {string} query
+ * @param {number} k
+ * @returns {Array<object>}
+ */
+export function _lexicalSearchFile(query, k = 10) {
+  const rows = loadRows();
+  if (rows.length === 0) return [];
+  const trimmed = (query ?? "").trim();
+  if (!trimmed) return [];
+
+  const terms = trimmed.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
+
+  const scored = [];
+  for (const row of rows) {
+    const text = `${row.headline ?? ""} ${row.details ?? ""}`.toLowerCase();
+    const totalLen = Math.max(text.length, 1);
+    let lexicalScore = 0;
+    for (const term of terms) {
+      let count = 0;
+      let pos = 0;
+      while ((pos = text.indexOf(term, pos)) !== -1) {
+        count++;
+        pos += term.length;
+      }
+      lexicalScore += (count * term.length) / totalLen;
+    }
+    if (lexicalScore > 0) {
+      const articleId = row.id.split(":")[0];
+      const chunkIdx = row.chunk_index ?? parseInt((row.id.split(":")[1] ?? "0"), 10);
+      const text_ = (row.details ?? "").replace(/\s+/g, " ").trim();
+      scored.push({
+        id: articleId,
+        article_id: articleId,
+        chunk_index: chunkIdx,
+        headline: row.headline,
+        text: text_,
+        details: text_.slice(0, 240),
+        score: lexicalScore,
+        attachment_url: row.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(row.attachment_url),
+        best_passage: { text: text_, start_offset: 0, end_offset: text_.length, context: { before: "", after: "" }, score: lexicalScore },
+        passages: [{ text: text_, start_offset: 0, end_offset: text_.length, context: { before: "", after: "" }, score: lexicalScore }],
+        chunks: [{ text: text_, score: lexicalScore, chunk_index: chunkIdx }],
+      });
+    }
+  }
+
+  return scored.sort((a, b) => b.score - a.score).slice(0, k);
+}
+
+// ---------------------------------------------------------------------------
 // Postgres-backed search path
 // ---------------------------------------------------------------------------
 
@@ -496,22 +556,59 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   }
 
   // --- Stage 2 & 3: Lexical scoring + RRF fusion (hybrid pipeline) ---
-  if (cfg.hybridEnabled && debug) {
-    // Lexical stage: BM25/sparse scoring is a stub — score = 0 per result.
-    const lexicalT0 = performance.now();
-    const lexicalLatencyMs = performance.now() - lexicalT0;
-    const withLexicalScores = results.map((r) => ({ ...r, score: 0 }));
-    _recordExplainStage(explainMap, withLexicalScores, "lexical", lexicalLatencyMs);
+  if (cfg.hybridEnabled) {
+    const rrfK = cfg.rrfK ?? 60;
 
-    // RRF fusion: weight dense by fusionWeight (lexical contributes 0).
+    // Run lexical search on the appropriate backend.
+    const lexicalT0 = performance.now();
+    let lexicalResults = [];
+    try {
+      if (usePostgres()) {
+        const { getPgStore } = await import("../store/PgVectorStore.js");
+        const { searchLexical } = await import("../core/lexical/index.js");
+        const store = getPgStore();
+        const lexRows = await searchLexical(store, query, topK);
+        lexicalResults = lexRows.map((row) => {
+          const text = (row.details ?? "").replace(/\s+/g, " ").trim();
+          return {
+            id: row.id,
+            article_id: row.id,
+            chunk_index: row.chunk_index ?? 0,
+            headline: row.headline,
+            text,
+            details: text.slice(0, 240),
+            score: row.lexical_score,
+            attachment_url: row.attachment_url ?? null,
+            attachment_url_type: resolveAttachmentUrlType(row.attachment_url),
+            best_passage: { text, start_offset: 0, end_offset: text.length, context: { before: "", after: "" }, score: row.lexical_score },
+            passages: [{ text, start_offset: 0, end_offset: text.length, context: { before: "", after: "" }, score: row.lexical_score }],
+            chunks: [{ text, score: row.lexical_score, chunk_index: row.chunk_index ?? 0 }],
+          };
+        });
+      } else if (!useMilvus()) {
+        // File-backed backend: use term-frequency lexical scorer.
+        lexicalResults = _lexicalSearchFile(query, topK);
+      }
+      // Milvus has no native lexical path; lexicalResults stays [].
+    } catch {
+      lexicalResults = [];
+    }
+    const lexicalLatencyMs = performance.now() - lexicalT0;
+
+    if (debug) {
+      _recordExplainStage(explainMap, lexicalResults, "lexical", lexicalLatencyMs);
+    }
+
+    // RRF fusion: merge dense + lexical lists.
     const rrfT0 = performance.now();
+    const fused = mergeRrf(results, lexicalResults, rrfK);
+    results = fused.slice(0, topK);
     const rrfLatencyMs = performance.now() - rrfT0;
-    // Fused score = fusionWeight * dense_score + (1 - fusionWeight) * 0
-    const withRrfScores = results.map((r) => ({
-      ...r,
-      score: parseFloat((cfg.hybridFusionWeight * r.score).toFixed(4)),
-    }));
-    _recordExplainStage(explainMap, withRrfScores, "rrf", rrfLatencyMs);
+
+    if (debug) {
+      _recordExplainStage(explainMap, results, "rrf", rrfLatencyMs);
+    }
+    // dense_rank, lexical_rank, fused_score are always set by mergeRrf on hybrid results.
   }
 
   // --- Stage 4: Cross-encoder reranking ---
