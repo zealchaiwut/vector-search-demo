@@ -15,6 +15,7 @@
  *   RETRIEVAL_CHUNK_SIZE               — characters per chunk (default: 400)
  *   RETRIEVAL_CHUNK_OVERLAP            — character overlap between chunks (default: 80)
  *   RETRIEVAL_TEXT_NORMALISATION_ENABLED — normalise text before embedding (default: true)
+ *   RETRIEVAL_CHUNKING_MODE             — chunking strategy: 'length' or 'thai_word' (default: length)
  */
 
 // ---------------------------------------------------------------------------
@@ -57,6 +58,7 @@ export const PRESETS = {
     chunkSize: 400,
     chunkOverlap: 80,
     textNormalisationEnabled: true,
+    chunkingMode: "length",
   },
   hybrid: {
     embeddingModelId: "Xenova/all-MiniLM-L6-v2",
@@ -70,6 +72,7 @@ export const PRESETS = {
     chunkSize: 400,
     chunkOverlap: 80,
     textNormalisationEnabled: true,
+    chunkingMode: "length",
   },
   "hybrid-rerank": {
     embeddingModelId: "Xenova/all-MiniLM-L6-v2",
@@ -83,6 +86,7 @@ export const PRESETS = {
     chunkSize: 400,
     chunkOverlap: 80,
     textNormalisationEnabled: true,
+    chunkingMode: "length",
   },
 };
 
@@ -121,6 +125,7 @@ export function defaultRetrievalConfig() {
       process.env.RETRIEVAL_TEXT_NORMALISATION_ENABLED,
       true,
     ),
+    chunkingMode: process.env.RETRIEVAL_CHUNKING_MODE ?? "length",
   };
 }
 
@@ -159,6 +164,8 @@ export function parseConfigOverrides(params) {
     out.chunkOverlap = parseIntVal(params.chunkOverlap, undefined);
   if (params.textNormalisationEnabled !== undefined)
     out.textNormalisationEnabled = parseBool(params.textNormalisationEnabled, undefined);
+  if (params.chunkingMode !== undefined)
+    out.chunkingMode = String(params.chunkingMode);
   return out;
 }
 
