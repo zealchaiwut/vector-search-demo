@@ -1,6 +1,5 @@
 """Tests for issue #146: align eval script default port to 8000 (not 7070)"""
 import os
-import re
 
 
 def test_run_eval_default_port():
