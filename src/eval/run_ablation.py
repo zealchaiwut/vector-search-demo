@@ -12,7 +12,7 @@ Options:
   --config FILE          Preset config file (YAML or JSON). Default: ablation_presets.json
                          in the same directory as this script.
   --output FILE          Write results to FILE (JSON or CSV).
-  --search-url URL       Search endpoint (default: http://localhost:7070/search).
+  --search-url URL       Search endpoint (default: http://localhost:8000/search).
   --k N                  Top-k for retrieval metrics (default: 10).
   --dataset FILE         Path to the eval dataset JSON (default: thai_eval_set.json).
   --embedding-model MODEL  Override the embedding model for this run (e.g.
@@ -54,7 +54,7 @@ from datetime import datetime, timezone
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _DEFAULT_CONFIG = os.path.join(_DIR, "ablation_presets.json")
 _DEFAULT_DATASET = os.path.join(_DIR, "thai_eval_set.json")
-_DEFAULT_SEARCH_URL = "http://localhost:7070/search"
+_DEFAULT_SEARCH_URL = "http://localhost:8000/search"
 _DEFAULT_K = 10
 
 

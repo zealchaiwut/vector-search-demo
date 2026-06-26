@@ -75,7 +75,7 @@ Range: 0–1. MRR = 1.0 means every query found the correct result at rank 1.
 ## Running the eval
 
 ```bash
-# Against a running local server (default port 7070):
+# Against a running local server (default port 8000):
 python3 src/eval/run_eval.py
 
 # Configurable:
