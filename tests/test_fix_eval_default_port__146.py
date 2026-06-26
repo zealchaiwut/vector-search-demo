@@ -8,7 +8,6 @@ AC3 — src/eval/README.md example comment references port 8000, not 7070.
 
 import importlib.util
 import os
-import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EVAL_SCRIPT = os.path.join(REPO_ROOT, "src", "eval", "run_eval.py")
