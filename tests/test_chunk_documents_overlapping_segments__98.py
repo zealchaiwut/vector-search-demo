@@ -330,14 +330,7 @@ def test_ac8_no_magic_numbers_in_chunking():
         src = f.read()
     # Look for suspicious hardcoded numbers (not constants)
     # This is a heuristic check; the main test is AC8 constants above
-    lines_with_numbers = [line for line in src.split('\n') if re.search(r'\b(500|100|120|30)\b', line)]
-    # Filter out lines that use constants or are comments/strings
-    suspicious = [
-        line for line in lines_with_numbers
-        if 'CHUNK_SIZE' not in line and 'CHUNK_OVERLAP' not in line and not line.strip().startswith('//')
-    ]
-    # Some magic numbers are expected (e.g., in comments, array indices)
-    # Just ensure the chunk size/overlap are via constants
+    # Just ensure the chunk size/overlap are via constants, not magic numbers
     assert re.search(r"export\s+const\s+CHUNK_SIZE", src), (
         "CHUNK_SIZE constant must be defined"
     )

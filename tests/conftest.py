@@ -78,7 +78,7 @@ def assert_chunker_constants(src: str) -> None:
         f"CHUNK_OVERLAP should be ~100 chars, got {overlap_match.group(1)}"
     )
 
-    word_splits = [l for l in src.splitlines() if re.search(r'\.split\s*\(\s*/\\s\+/', l)]
+    word_splits = [line for line in src.splitlines() if re.search(r'\.split\s*\(\s*/\\s\+/', line)]
     assert not word_splits, (
         "chunker.js must not split by \\s+ — use character index slicing for Thai support"
     )

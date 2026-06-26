@@ -17,7 +17,6 @@ import json
 import re
 import subprocess
 
-
 from conftest import (
     CHUNKER_JS,
     DATA_EMBEDDER,
@@ -252,7 +251,7 @@ process.stdout.write(JSON.stringify({
     out, err, rc = _run_node(script, timeout=60, env={"DB_BACKEND": "mock"})
     assert rc == 0, f"Node error: {err}\n{out}"
     # Extract JSON from the last JSON line
-    json_lines = [l for l in out.strip().splitlines() if l.startswith("{")]
+    json_lines = [line for line in out.strip().splitlines() if line.startswith("{")]
     assert json_lines, f"No JSON output found: {out}"
     result = json.loads(json_lines[-1])
     assert "error" not in result, f"Search error: {result}"
@@ -300,7 +299,7 @@ process.stdout.write(JSON.stringify({ count1, count2 }));
 """
     out, err, rc = _run_node(script, timeout=60, env={"DB_BACKEND": "mock"})
     assert rc == 0, f"Node error: {err}\n{out}"
-    json_lines = [l for l in out.strip().splitlines() if l.startswith("{")]
+    json_lines = [line for line in out.strip().splitlines() if line.startswith("{")]
     assert json_lines, f"No JSON output: {out}"
     result = json.loads(json_lines[-1])
     # count1 and count2 should reflect no duplicates
