@@ -21,7 +21,7 @@ def read_all_migrations() -> str:
     """Concatenate all .sql files from MIGRATIONS_DIR in sorted order."""
     combined = ""
     for fname in sorted(f for f in os.listdir(MIGRATIONS_DIR) if f.endswith(".sql")):
-        with open(os.path.join(MIGRATIONS_DIR, fname)) as fh:
+        with open(os.path.join(MIGRATIONS_DIR, fname), encoding="utf-8") as fh:
             combined += fh.read() + "\n"
     return combined
 
