@@ -159,6 +159,14 @@ export class PgVectorStore {
     return result.rows[0].ts;
   }
 
+  async checkHealth() {
+    const res = await this._pool.query(
+      "SELECT extname FROM pg_extension WHERE extname = 'vector';"
+    );
+    const row = res.rows[0];
+    return row ? row.extname : null;
+  }
+
   async upsert(rows) {
     if (!rows || rows.length === 0) return;
     await this._register();

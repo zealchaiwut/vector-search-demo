@@ -21,7 +21,7 @@ import { searchDocuments } from "./search/index.js";
 import { resolveRetrievalConfig, parseConfigOverrides, KNOWN_PRESETS } from "./config/retrieval.js";
 import { batchEmbed } from "./data/embedder.js";
 import { upsertRows, getArticle, deleteArticle, listArticles, entityCount } from "./data/collection.js";
-import { validateArticle, validateArticleId, getArticleIdError } from "./data/articleValidation.js";
+import { validateArticle, getArticleIdError } from "./data/articleValidation.js";
 import { chunkDocument } from "./data/chunker.js";
 import { usePostgres } from "./data/backend.js";
 import { extractPdfText } from "./pdf/index.js";
@@ -371,8 +371,8 @@ async function handleRequest(req, res) {
     const headline = (payload.headline ?? "").trim();
     const details = (payload.details ?? "").trim();
     const attachment_url = (payload.attachment_url ?? "").trim();
-    // Delete existing chunks before re-inserting so reduced chunk counts don't leave orphans.
-    await deleteArticle(articleId);
+    // Embed first so a batchEmbed failure leaves the original article intact.
+    // Only delete the old chunks after the new embeddings are ready.
     const chunks = chunkDocument({ id: articleId, headline, details, attachment_url });
     const embeddedChunks = await batchEmbed(chunks);
     const chunkRows = embeddedChunks.map((c) => ({
@@ -382,6 +382,7 @@ async function handleRequest(req, res) {
       attachment_url: c.attachment_url,
       embedding: c.embedding,
     }));
+    await deleteArticle(articleId);
     await upsertRows(chunkRows);
     jsonResponse(res, 200, { id: articleId });
     return;

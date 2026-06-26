@@ -162,7 +162,7 @@ def test_no_other_fields_altered():
         f"package.json version changed unexpectedly: {pkg.get('version')!r}"
     )
 
-    expected_dev_deps = {"@types/node", "pdf-lib", "tsx", "typescript"}
+    expected_dev_deps = {"@types/node", "pdf-lib", "sharp", "tsx", "typescript"}
     actual_dev_deps = set(pkg.get("devDependencies", {}).keys())
     assert actual_dev_deps == expected_dev_deps, (
         f"devDependencies changed. Expected {expected_dev_deps}, got {actual_dev_deps}"
@@ -173,9 +173,9 @@ def test_no_other_fields_altered():
         "@zilliz/milvus2-sdk-node",
         "commander",
         "fastify",
+        "mammoth",
         "pg",
         "pgvector",
-        "sharp",
         "tesseract.js",
         "unpdf",
     }

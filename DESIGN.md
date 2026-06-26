@@ -58,7 +58,7 @@ goes through the factory.
 |---------|--------|-------------|
 | `mock` | `src/store/mock.js` | File-backed store; reads/writes `collection.json`. Default. No external services. |
 | `milvus` | `src/store/milvus.js` | Live Milvus ANN index (HNSW COSINE, dim=384). Requires `MILVUS_HOST`. |
-| `postgres` | `src/store/postgres.js` | Postgres-backed store; not yet wired. Factory recognises the value and fails with a clear "not yet implemented" error. |
+| `postgres` | `src/store/postgres.js` | Postgres-backed store (pgvector via `pg` driver). Fully implemented. Requires `DATABASE_URL`. |
 
 ### Factory pattern
 
@@ -79,7 +79,7 @@ Set `DB_BACKEND` before running any command:
 ```sh
 export DB_BACKEND=mock     # default — no Docker needed
 export DB_BACKEND=milvus   # live Milvus instance
-export DB_BACKEND=postgres # Postgres (not yet wired)
+export DB_BACKEND=postgres # Postgres + pgvector (requires DATABASE_URL)
 ```
 
 If `DB_BACKEND` is set to an unrecognised value the factory throws immediately
