@@ -21,10 +21,8 @@ import pytest
 
 from conftest import (
     CHUNKER_JS,
-    MIGRATIONS_DIR,
     PG_STORE_PATH,
     REPO_ROOT,
-    read_all_migrations,
 )
 
 BASE_URL = os.environ.get("UAT_BASE_URL") or "http://localhost:" + os.environ.get("UAT_PORT", "8010")

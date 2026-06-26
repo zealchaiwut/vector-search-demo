@@ -17,12 +17,10 @@ import json
 import re
 import subprocess
 
-import pytest
 
 from conftest import (
     CHUNKER_JS,
     DATA_EMBEDDER,
-    MIGRATIONS_DIR,
     PG_STORE_PATH,
     REPO_ROOT,
     assert_chunker_constants,
