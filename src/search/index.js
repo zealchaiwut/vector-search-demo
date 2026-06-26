@@ -678,7 +678,7 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
     } catch {
       lexicalResults = [];
     }
-    const lexicalLatencyMs = performance.now() - lexicalT0;
+    const lexicalLatencyMs = performance.now() - lexicalT0; // stub — no real computation on Milvus path; will reflect BM25 cost when implemented
 
     if (debug) {
       _recordExplainStage(explainMap, lexicalResults, "lexical", lexicalLatencyMs);
