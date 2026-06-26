@@ -30,8 +30,10 @@ export function chunkDocument(
   chunkSize = CHUNK_SIZE,
   overlap = CHUNK_OVERLAP,
 ) {
-  const sz = parseInt(process.env.CHUNK_SIZE ?? "", 10) || chunkSize;
-  const ov = parseInt(process.env.CHUNK_OVERLAP ?? "", 10) || overlap;
+  const _szEnv = parseInt(process.env.CHUNK_SIZE, 10);
+  const sz = (Number.isFinite(_szEnv) && _szEnv >= 0) ? _szEnv : chunkSize;
+  const _ovEnv = parseInt(process.env.CHUNK_OVERLAP, 10);
+  const ov = (Number.isFinite(_ovEnv) && _ovEnv >= 0) ? _ovEnv : overlap;
   const { id, headline, details } = article;
   const text = (details ?? "").trim();
 
