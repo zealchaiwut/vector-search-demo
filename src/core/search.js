@@ -429,7 +429,16 @@ async function _searchPostgres(query, k) {
       const passages = deduplicatePassages(chunkPassages).sort(
         (a, b) => b.score - a.score,
       );
-      const best_passage = passages[0] ?? null;
+      // Compute best_passage from the full assembled article text for parity with the
+      // file backend, which runs selectBestPassage over all chunk details concatenated.
+      const articleData = await store.get(articleId);
+      const articleText =
+        articleData?.details ?? chunks.map((c) => c.details).join(" ");
+      const best_passage = await selectBestPassage(
+        articleText,
+        queryEmbedding,
+        embedder,
+      );
 
       return {
         id: articleId,
