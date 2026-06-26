@@ -3,6 +3,19 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 15 (2026-06-26)
+
+- #108: Make re-embed completion message use dynamic model name instead of hardcoded string
+- #109: Deduplicate overlapping static assertions from two #98 test files into conftest.py
+- #118: Fix _searchMilvus to group chunk hits by parent article (matches file/postgres behaviour)
+- #119: Fix Milvus search path to apply MIN_SCORE_THRESHOLD instead of bare score>0 filter
+- #121: Add character-count sub-window fallback in splitIntoSentences() for Thai text
+- #143: Add range validation for topK (1–500) and hybridFusionWeight (0.0–1.0) in resolveRetrievalConfig — returns HTTP 400 on violation
+- #144: Add regression tests anchoring hybrid pipeline / debug-flag decoupling behaviour
+- #145: Surface infrastructure errors in run_eval.py — warns to stderr per failed query, exits 1 when all queries fail
+- #146: Fix Python eval default port from 7070 to 8000 in run_eval.py and run_ablation.py
+- #147: Add stub comment to lexical latency line in searchDocuments clarifying 0ms is not real BM25 cost
+
 ## Sprint 14 (2026-06-25)
 
 - #59: Extract shared avgEmbeddings/collapseToArticles to src/store/embedUtils.js (single source of truth)
