@@ -21,7 +21,7 @@ Metric definitions:
 All three metrics are computed at the same k.
 
 Environment variables:
-  SEARCH_URL        HTTP endpoint (default: http://localhost:7070/search)
+  SEARCH_URL        HTTP endpoint (default: http://localhost:8000/search)
   K                 Number of top results to consider (default: 10)
   RECALL_THRESHOLD  Minimum recall@k to pass (default: 0.80)
   EVAL_DATASET      Path to the JSON query dataset (default: thai_eval_set.json
@@ -43,7 +43,7 @@ import urllib.request
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
-SEARCH_URL = os.environ.get("SEARCH_URL", "http://localhost:7070/search")
+SEARCH_URL = os.environ.get("SEARCH_URL", "http://localhost:8000/search")
 K = int(os.environ.get("K", "10"))
 RECALL_THRESHOLD = float(os.environ.get("RECALL_THRESHOLD", "0.80"))
 DATASET_PATH = os.environ.get("EVAL_DATASET", os.path.join(_DIR, "thai_eval_set.json"))
