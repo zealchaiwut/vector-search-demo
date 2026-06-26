@@ -13,18 +13,23 @@ AC7  - Re-ingesting an existing article deletes all previous chunk rows before i
 AC8  - Chunk size and overlap are defined as constants or config values, not magic numbers
 """
 
-import os
+import json
 import re
 import subprocess
-import json
 
 import pytest
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CHUNKER_JS = os.path.join(REPO_ROOT, "src", "data", "chunker.js")
-PG_STORE_PATH = os.path.join(REPO_ROOT, "src", "store", "PgVectorStore.js")
-MIGRATIONS_DIR = os.path.join(REPO_ROOT, "src", "store", "migrations")
-DATA_EMBEDDER = os.path.join(REPO_ROOT, "src", "data", "embedder.js")
+from conftest import (
+    CHUNKER_JS,
+    DATA_EMBEDDER,
+    MIGRATIONS_DIR,
+    PG_STORE_PATH,
+    REPO_ROOT,
+    assert_chunker_constants,
+    assert_migration_chunk_columns,
+    assert_migration_preserves_article_metadata,
+    read_all_migrations,
+)
 
 MODEL_TIMEOUT = 120
 
@@ -50,127 +55,29 @@ def _run_node(script, timeout=MODEL_TIMEOUT, env=None):
 # AC1: chunks table (or equivalent) exists with required columns
 # ---------------------------------------------------------------------------
 
-def _all_migration_sql():
-    combined = ""
-    for fname in sorted(f for f in os.listdir(MIGRATIONS_DIR) if f.endswith(".sql")):
-        with open(os.path.join(MIGRATIONS_DIR, fname)) as fh:
-            combined += fh.read() + "\n"
-    return combined
-
-
-def test_ac1_chunks_equivalent_has_article_id():
-    """AC1: articles table (chunks equivalent) has article_id column."""
-    sql = _all_migration_sql()
-    assert re.search(r"article_id\s+text", sql, re.IGNORECASE), (
-        "articles table must have article_id text column (FK equivalent for chunk grouping)"
-    )
-
-
-def test_ac1_chunks_equivalent_has_chunk_index():
-    """AC1: articles table (chunks equivalent) has chunk_index integer column."""
-    sql = _all_migration_sql()
-    assert re.search(r"chunk_index\s+integer", sql, re.IGNORECASE), (
-        "articles table must have chunk_index integer column"
-    )
-
-
-def test_ac1_chunks_equivalent_has_text_column():
-    """AC1: articles table (chunks equivalent) has details (text) column for chunk content."""
-    sql = _all_migration_sql()
-    assert re.search(r"details\s+text", sql, re.IGNORECASE), (
-        "articles table must have details text column for chunk text storage"
-    )
-
-
-def test_ac1_chunks_equivalent_has_embedding_column():
-    """AC1: articles table (chunks equivalent) has embedding (vector) column."""
-    sql = _all_migration_sql()
-    assert re.search(r"embedding\s+vector", sql, re.IGNORECASE), (
-        "articles table must have embedding vector column"
-    )
+def test_ac1_migration_chunk_schema():
+    """AC1: migration SQL defines article_id, chunk_index, details, embedding columns."""
+    assert_migration_chunk_columns(read_all_migrations())
 
 
 # ---------------------------------------------------------------------------
 # AC2: articles table retains headline, attachment_url, and metadata fields
 # ---------------------------------------------------------------------------
 
-def test_ac2_articles_table_has_headline():
-    """AC2: articles table must have headline column."""
-    sql = _all_migration_sql()
-    assert re.search(r"headline\s+text", sql, re.IGNORECASE), (
-        "articles table must retain headline text column"
-    )
-
-
-def test_ac2_articles_table_has_attachment_url():
-    """AC2: articles table must have attachment_url column."""
-    sql = _all_migration_sql()
-    assert "attachment_url" in sql.lower(), (
-        "articles table must retain attachment_url column"
-    )
-
-
-def test_ac2_no_migration_drops_headline():
-    """AC2: migrations must not drop headline, attachment_url, or created_at."""
-    sql = _all_migration_sql()
-    drops = re.findall(
-        r"DROP\s+COLUMN\s+(headline|attachment_url|created_at)", sql, re.IGNORECASE
-    )
-    assert not drops, f"Migrations must not drop metadata columns; found: {drops}"
+def test_ac2_migration_preserves_article_metadata():
+    """AC2: migration retains headline and attachment_url; no DROP COLUMN on metadata."""
+    assert_migration_preserves_article_metadata(read_all_migrations())
 
 
 # ---------------------------------------------------------------------------
-# AC3: Chunking splits by character length, not whitespace
+# AC3 / AC8: Chunk constants are exported, have correct values, no whitespace split
 # ---------------------------------------------------------------------------
 
-def test_ac3_chunker_uses_char_length_constants():
-    """AC3: chunker.js must define CHUNK_SIZE and CHUNK_OVERLAP as named constants (not word-based)."""
+def test_ac3_ac8_chunker_constants():
+    """AC3/AC8: chunker.js exports CHUNK_SIZE and CHUNK_OVERLAP (~500/~100); no whitespace split."""
     with open(CHUNKER_JS) as f:
         src = f.read()
-    assert "CHUNK_SIZE" in src, (
-        "chunker.js must define CHUNK_SIZE constant for character-based chunking"
-    )
-    assert "CHUNK_OVERLAP" in src, (
-        "chunker.js must define CHUNK_OVERLAP constant for character-based overlap"
-    )
-
-
-def test_ac3_chunker_no_whitespace_split():
-    """AC3: chunker.js must NOT use whitespace-based word splitting (/\\s+/) as the primary split."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    # The old word-based chunker used: .split(/\s+/)
-    # The new char-based chunker should NOT use whitespace splitting as its core logic
-    # (it may still use it for trimming, but not for chunking boundaries)
-    lines = src.splitlines()
-    split_lines = [l for l in lines if re.search(r'\.split\s*\(\s*/\\s\+/', l)]
-    assert not split_lines, (
-        "chunker.js must not split by whitespace (\\s+) — use character index slicing for Thai support"
-    )
-
-
-def test_ac3_chunk_size_is_approx_500_chars():
-    """AC3: default CHUNK_SIZE constant must be approximately 500 characters."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    match = re.search(r'CHUNK_SIZE\s*=\s*(\d+)', src)
-    assert match, "CHUNK_SIZE must be defined as a numeric constant"
-    size = int(match.group(1))
-    assert 400 <= size <= 600, (
-        f"CHUNK_SIZE should be approximately 500 chars, got {size}"
-    )
-
-
-def test_ac3_chunk_overlap_is_approx_100_chars():
-    """AC3: default CHUNK_OVERLAP constant must be approximately 100 characters."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    match = re.search(r'CHUNK_OVERLAP\s*=\s*(\d+)', src)
-    assert match, "CHUNK_OVERLAP must be defined as a numeric constant"
-    overlap = int(match.group(1))
-    assert 50 <= overlap <= 150, (
-        f"CHUNK_OVERLAP should be approximately 100 chars, got {overlap}"
-    )
+    assert_chunker_constants(src)
 
 
 def test_ac3_thai_text_chunked_without_spaces():
@@ -406,23 +313,9 @@ process.stdout.write(JSON.stringify({ count1, count2 }));
 
 
 # ---------------------------------------------------------------------------
-# AC8: Chunk size and overlap are defined as constants, not magic numbers
+# AC8: No magic numbers in chunkDocument function body
+# (export/value checks are covered by test_ac3_ac8_chunker_constants above)
 # ---------------------------------------------------------------------------
-
-def test_ac8_constants_are_exported():
-    """AC8: chunker.js must export CHUNK_SIZE and CHUNK_OVERLAP as named constants."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    # Must be exported (either export const or exported in export block)
-    has_export_chunk_size = re.search(r"export\s+(const\s+)?CHUNK_SIZE", src)
-    has_export_chunk_overlap = re.search(r"export\s+(const\s+)?CHUNK_OVERLAP", src)
-    assert has_export_chunk_size, (
-        "chunker.js must export CHUNK_SIZE so other modules can reference the configured value"
-    )
-    assert has_export_chunk_overlap, (
-        "chunker.js must export CHUNK_OVERLAP so other modules can reference the configured value"
-    )
-
 
 def test_ac8_no_magic_numbers_in_chunker():
     """AC8: chunkDocument function must not contain magic numbers for size/overlap."""
