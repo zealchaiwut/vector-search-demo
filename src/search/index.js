@@ -99,6 +99,30 @@ function cosineSimilarity(a, b) {
 // Sentence splitting for best_passage extraction
 // ---------------------------------------------------------------------------
 
+// Thai and other scripts without ASCII terminators produce single segments that
+// span the entire chunk. When a segment exceeds this length, sub-window it so
+// selectBestPassage() has meaningful candidate units to score.
+const SENTENCE_MAX_CHARS = 200;
+const SENTENCE_WINDOW_SIZE = 150;
+
+function _subwindow(text, globalOffset) {
+  const windows = [];
+  let pos = 0;
+  const len = text.length;
+  while (pos < len) {
+    const sliceEnd = Math.min(pos + SENTENCE_WINDOW_SIZE, len);
+    const raw = text.slice(pos, sliceEnd);
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) {
+      const lead = raw.length - raw.trimStart().length;
+      const start = globalOffset + pos + lead;
+      windows.push({ text: trimmed, start, end: start + trimmed.length });
+    }
+    pos = sliceEnd;
+  }
+  return windows;
+}
+
 function splitIntoSentences(text) {
   const sentences = [];
   let segStart = 0;
@@ -133,7 +157,17 @@ function splitIntoSentences(text) {
     }
   }
 
-  return sentences;
+  // Fallback for Thai and other scripts: sub-window any segment that exceeds
+  // SENTENCE_MAX_CHARS so selectBestPassage() can rank meaningful sub-units.
+  const result = [];
+  for (const s of sentences) {
+    if (s.text.length > SENTENCE_MAX_CHARS) {
+      result.push(..._subwindow(s.text, s.start));
+    } else {
+      result.push(s);
+    }
+  }
+  return result;
 }
 
 async function selectBestPassage(docText, queryEmbedding, embedder) {
