@@ -216,21 +216,10 @@ def test_assert_chunker_constants_validates():
 
 def test_no_duplicate_static_assertions():
     """AC2: Verify static assertion logic is not duplicated across test files."""
-    test_file1 = os.path.join(TESTS_DIR, "test_char_chunking__98.py")
     test_file2 = os.path.join(TESTS_DIR, "test_chunk_documents_overlapping_segments__98.py")
 
-    with open(test_file1) as f:
-        content1 = f.read()
     with open(test_file2) as f:
         content2 = f.read()
-
-    # Extract regex patterns that would indicate duplicated logic
-    migration_check1 = re.search(r"article_id\s+text", content1)
-    migration_check2 = re.search(r"article_id\s+text", content2)
-
-    # Both files can have the check, but only via importing the conftest helper
-    # The key is that test_chunk_documents_overlapping_segments__98.py should NOT have
-    # duplicated regex checks — it should call the conftest helper
 
     # Verify that test_chunk_documents_overlapping_segments__98.py does NOT define
     # its own migration column check (it should import and use conftest)
