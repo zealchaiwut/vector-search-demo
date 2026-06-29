@@ -217,5 +217,19 @@ export function resolveRetrievalConfig(presetName, overrides = {}) {
     }
   }
 
+  if (base.topK < 1 || base.topK > 500) {
+    return {
+      config: null,
+      error: `topK must be between 1 and 500, got ${base.topK}`,
+    };
+  }
+
+  if (base.hybridFusionWeight < 0.0 || base.hybridFusionWeight > 1.0) {
+    return {
+      config: null,
+      error: `hybridFusionWeight must be between 0.0 and 1.0, got ${base.hybridFusionWeight}`,
+    };
+  }
+
   return { config: base, error: null };
 }

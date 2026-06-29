@@ -228,14 +228,17 @@ python3 src/eval/run_eval.py
 
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `SEARCH_URL` | `http://localhost:7070/search` | Search endpoint |
+| `SEARCH_URL` | `http://localhost:8000/search` | Search endpoint |
 | `K` | `10` | Top-k for all three metrics |
 | `RECALL_THRESHOLD` | `0.80` | Minimum recall@k to pass |
 | `EVAL_DATASET` | `src/eval/thai_eval_set.json` | Path to labeled dataset |
 | `COLLECTION_FILE` | (unset) | Optional corpus JSON for ID validation |
 
 Exit code 0 when recall@k ≥ threshold; non-zero with a descriptive error if any
-expected ID is absent from the corpus.
+expected ID is absent from the corpus. When search requests fail (network error,
+non-200 status, malformed JSON), a `WARNING` is printed to stderr per failing
+query. If **all** queries fail, the script exits with code 1 and prints a
+diagnostic pointing to `SEARCH_URL`.
 
 ### Ablation runner (`src/eval/run_ablation.py`)
 
@@ -250,7 +253,7 @@ python3 src/eval/run_ablation.py [--config src/eval/ablation_presets.json] [--ou
 |--------|---------|-------------|
 | `--config FILE` | `src/eval/ablation_presets.json` | YAML or JSON preset definitions |
 | `--output FILE` | (none) | Write results to JSON or CSV (includes timestamp) |
-| `--search-url URL` | `http://localhost:7070/search` | Search endpoint |
+| `--search-url URL` | `http://localhost:8000/search` | Search endpoint |
 | `--k N` | `10` | Top-k for all metrics |
 | `--dataset FILE` | `src/eval/thai_eval_set.json` | Labeled dataset |
 
@@ -316,9 +319,9 @@ Copy `.env.example` to `.env`.
 | `CHUNK_OVERLAP` | `80` | Character overlap between consecutive chunks for `ingest` and `rechunk`. |
 | `SEARCH_MAX_CHUNKS` | `3` | Maximum number of chunk hits to surface per article in search results. Can also be overridden per-request with the `n` query parameter on `GET /search`. |
 | `RETRIEVAL_EMBEDDING_MODEL_ID` | `Xenova/all-MiniLM-L6-v2` | Default embedding model for the retrieval pipeline. |
-| `RETRIEVAL_TOP_K` | `10` | Default number of results returned by the search endpoint. |
+| `RETRIEVAL_TOP_K` | `10` | Default number of results returned by the search endpoint. Must be between 1 and 500; values outside that range cause `resolveRetrievalConfig` to return HTTP 400. |
 | `RETRIEVAL_HYBRID_ENABLED` | `false` | Enable hybrid dense+sparse (BM25) fusion by default. |
-| `RETRIEVAL_HYBRID_FUSION_WEIGHT` | `0.7` | Dense/sparse blend weight (0–1, higher = more dense). |
+| `RETRIEVAL_HYBRID_FUSION_WEIGHT` | `0.7` | Dense/sparse blend weight (0–1, higher = more dense). Must be between 0.0 and 1.0; values outside that range cause `resolveRetrievalConfig` to return HTTP 400. |
 | `RETRIEVAL_RERANK_ENABLED` | `false` | Enable cross-encoder reranking by default. |
 | `RETRIEVAL_RERANK_MODEL_ID` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model used for reranking. |
 | `RETRIEVAL_CHUNK_SIZE` | `400` | Per-request chunk size default (falls back to `CHUNK_SIZE`). |

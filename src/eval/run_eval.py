@@ -21,7 +21,7 @@ Metric definitions:
 All three metrics are computed at the same k.
 
 Environment variables:
-  SEARCH_URL        HTTP endpoint (default: http://localhost:7070/search)
+  SEARCH_URL        HTTP endpoint (default: http://localhost:8000/search)
   K                 Number of top results to consider (default: 10)
   RECALL_THRESHOLD  Minimum recall@k to pass (default: 0.80)
   EVAL_DATASET      Path to the JSON query dataset (default: thai_eval_set.json
@@ -43,7 +43,7 @@ import urllib.request
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 
-SEARCH_URL = os.environ.get("SEARCH_URL", "http://localhost:7070/search")
+SEARCH_URL = os.environ.get("SEARCH_URL", "http://localhost:8000/search")
 K = int(os.environ.get("K", "10"))
 RECALL_THRESHOLD = float(os.environ.get("RECALL_THRESHOLD", "0.80"))
 DATASET_PATH = os.environ.get("EVAL_DATASET", os.path.join(_DIR, "thai_eval_set.json"))
@@ -76,16 +76,22 @@ def compute_rr(results: list[str], expected: set[str], k: int) -> float:
 # Search helper
 # ---------------------------------------------------------------------------
 
-def search(query: str, k: int) -> list[str]:
-    """Return article/chunk IDs from the top-k search results (GET request)."""
+def search(query: str, k: int) -> list[str] | None:
+    """Return article/chunk IDs from the top-k search results, or None on error.
+
+    On any failure (network error, non-200 status, malformed JSON) a WARNING is
+    printed to stderr so the caller can distinguish a genuine zero-recall run from
+    an infrastructure outage.
+    """
     params = urllib.parse.urlencode({"q": query, "k": k})
     url = f"{SEARCH_URL}?{params}"
     try:
         with urllib.request.urlopen(url, timeout=10) as resp:
             data = json.loads(resp.read().decode())
         return [r["id"] for r in data.get("results", []) if r.get("id")]
-    except Exception:
-        return []
+    except Exception as exc:
+        print(f"WARNING: search({query!r}) failed: {exc}", file=sys.stderr)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -135,11 +141,17 @@ def main() -> None:
     hits_recall: list[bool] = []
     ndcg_scores: list[float] = []
     rr_scores: list[float] = []
+    error_count = 0
 
     for entry in entries:
         query = entry["query"]
         expected = set(entry["expected"])
-        results = search(query, K)
+        raw = search(query, K)
+        if raw is None:
+            error_count += 1
+            results: list[str] = []
+        else:
+            results = raw
 
         hit = bool(expected & set(results[:K]))
         hits_recall.append(hit)
@@ -150,6 +162,14 @@ def main() -> None:
         got_str = ", ".join(results[:K]) if results else "(none)"
         exp_str = ", ".join(sorted(expected))
         print(f"[{label}]  query={query!r}  expected=[{exp_str}]  got=[{got_str}]")
+
+    if n > 0 and error_count == n:
+        print(
+            f"ERROR: All {n} search quer{'y' if n == 1 else 'ies'} failed — "
+            f"is the search endpoint reachable? (SEARCH_URL={SEARCH_URL})",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     recall = sum(hits_recall) / n if n else 0.0
     ndcg = sum(ndcg_scores) / n if n else 0.0

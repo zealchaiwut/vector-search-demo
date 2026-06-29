@@ -19,10 +19,11 @@ import re
 import httpx
 import pytest
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CHUNKER_JS = os.path.join(REPO_ROOT, "src", "data", "chunker.js")
-PG_STORE_PATH = os.path.join(REPO_ROOT, "src", "store", "PgVectorStore.js")
-MIGRATIONS_DIR = os.path.join(REPO_ROOT, "src", "store", "migrations")
+from conftest import (
+    CHUNKER_JS,
+    PG_STORE_PATH,
+    REPO_ROOT,
+)
 
 BASE_URL = os.environ.get("UAT_BASE_URL") or "http://localhost:" + os.environ.get("UAT_PORT", "8010")
 HAS_DB = bool(os.environ.get("DATABASE_URL") or os.environ.get("UAT_BASE_URL"))
@@ -36,48 +37,8 @@ def client():
 
 # ---------------------------------------------------------------------------
 # AC1: chunks equivalent (articles table) has article_id (FK), chunk_index columns
+# (SQL column checks are owned by test_char_chunking__98 via conftest helpers)
 # ---------------------------------------------------------------------------
-
-
-def _read_all_migrations():
-    """Read and concatenate all SQL migration files."""
-    combined = ""
-    for fname in sorted(f for f in os.listdir(MIGRATIONS_DIR) if f.endswith(".sql")):
-        with open(os.path.join(MIGRATIONS_DIR, fname)) as f:
-            combined += f.read() + "\n"
-    return combined
-
-
-def test_ac1_articles_table_has_article_id_column():
-    """Migration must add/define article_id text column for grouping chunks by article."""
-    sql = _read_all_migrations()
-    assert re.search(r"article_id\s+text", sql, re.IGNORECASE), (
-        "articles table must have article_id text column (FK for grouping chunks)"
-    )
-
-
-def test_ac1_articles_table_has_chunk_index_column():
-    """Migration must add/define chunk_index integer column for ordering chunks."""
-    sql = _read_all_migrations()
-    assert re.search(r"chunk_index\s+integer", sql, re.IGNORECASE), (
-        "articles table must have chunk_index integer column for sequential chunk ordering"
-    )
-
-
-def test_ac1_articles_table_has_details_text_column():
-    """articles table must have details (text) column for storing chunk text."""
-    sql = _read_all_migrations()
-    assert re.search(r"details\s+text", sql, re.IGNORECASE), (
-        "articles table must have details text column for chunk content"
-    )
-
-
-def test_ac1_articles_table_has_embedding_vector_column():
-    """articles table must have embedding (vector) column for storing chunk embeddings."""
-    sql = _read_all_migrations()
-    assert re.search(r"embedding\s+vector", sql, re.IGNORECASE), (
-        "articles table must have embedding vector column"
-    )
 
 
 def test_ac1_pg_store_handles_article_id_and_chunk_index():
@@ -90,21 +51,8 @@ def test_ac1_pg_store_handles_article_id_and_chunk_index():
 
 # ---------------------------------------------------------------------------
 # AC2: Articles table retains headline, attachment_url, metadata fields
+# (SQL static checks are owned by test_char_chunking__98 via conftest helpers)
 # ---------------------------------------------------------------------------
-
-
-def test_ac2_migration_preserves_headline_column():
-    """Migration must not drop headline column; articles table retains it."""
-    sql = _read_all_migrations()
-    drops = re.findall(r"DROP\s+COLUMN\s+headline", sql, re.IGNORECASE)
-    assert not drops, "Migration must not drop headline column"
-
-
-def test_ac2_migration_preserves_attachment_url_column():
-    """Migration must not drop attachment_url column; articles table retains it."""
-    sql = _read_all_migrations()
-    drops = re.findall(r"DROP\s+COLUMN\s+attachment_url", sql, re.IGNORECASE)
-    assert not drops, "Migration must not drop attachment_url column"
 
 
 @pytest.mark.skipif(not HAS_DB, reason="Requires live server with Postgres backend")
@@ -156,49 +104,9 @@ def test_ac2_article_attachment_url_preserved_on_create_live(client):
 
 # ---------------------------------------------------------------------------
 # AC3: Chunking splits by character length (~500) with overlap (~100), not whitespace
+# (CHUNK_SIZE/CHUNK_OVERLAP constant presence, values, and no-whitespace-split checks
+# are owned by test_char_chunking__98 via conftest helpers; unique checks below)
 # ---------------------------------------------------------------------------
-
-
-def test_ac3_chunker_exports_chunk_size_constant():
-    """chunker.js must export CHUNK_SIZE constant (should be ~500)."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    assert re.search(r"export\s+const\s+CHUNK_SIZE", src), (
-        "chunker.js must export CHUNK_SIZE as a named constant"
-    )
-
-
-def test_ac3_chunker_exports_chunk_overlap_constant():
-    """chunker.js must export CHUNK_OVERLAP constant (should be ~100)."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    assert re.search(r"export\s+const\s+CHUNK_OVERLAP", src), (
-        "chunker.js must export CHUNK_OVERLAP as a named constant"
-    )
-
-
-def test_ac3_chunk_size_value_approximately_500():
-    """CHUNK_SIZE constant should be approximately 500 characters."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    match = re.search(r"CHUNK_SIZE\s*=\s*(\d+)", src)
-    assert match, "CHUNK_SIZE must be defined as a numeric constant"
-    size = int(match.group(1))
-    assert 400 <= size <= 600, (
-        f"CHUNK_SIZE should be ~500 chars (got {size}) for Thai PDF support"
-    )
-
-
-def test_ac3_chunk_overlap_value_approximately_100():
-    """CHUNK_OVERLAP constant should be approximately 100 characters."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    match = re.search(r"CHUNK_OVERLAP\s*=\s*(\d+)", src)
-    assert match, "CHUNK_OVERLAP must be defined as a numeric constant"
-    overlap = int(match.group(1))
-    assert 50 <= overlap <= 150, (
-        f"CHUNK_OVERLAP should be ~100 chars (got {overlap}) for context retention"
-    )
 
 
 def test_ac3_chunker_uses_character_based_splitting():
@@ -208,17 +116,6 @@ def test_ac3_chunker_uses_character_based_splitting():
     # Character-based: uses .slice(i, i + size)
     assert re.search(r"\.slice\s*\(\s*\w+\s*,\s*\w+\s*\+", src), (
         "chunker.js must use text.slice() for character-based chunking"
-    )
-
-
-def test_ac3_chunker_does_not_use_word_splitting():
-    """chunker.js must NOT use word-based whitespace splitting (.split(/\\s+/))."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    # Should not contain word-splitting pattern
-    word_splits = re.findall(r"\.split\s*\(\s*/\\s\+", src)
-    assert not word_splits, (
-        "chunker.js must not use .split(/\\s+/) — use character-based splitting for Thai"
     )
 
 
@@ -403,25 +300,9 @@ def test_ac7_reingest_replaces_chunks_no_duplicates_live(client):
 
 # ---------------------------------------------------------------------------
 # AC8: Chunk size and overlap are constants/config, not magic numbers
+# (export + value checks are owned by test_char_chunking__98 via conftest helpers;
+# unique checks below)
 # ---------------------------------------------------------------------------
-
-
-def test_ac8_chunk_size_is_named_export():
-    """CHUNK_SIZE must be exported as a named constant, not hardcoded."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    assert re.search(r"export\s+const\s+CHUNK_SIZE\s*=\s*\d+", src), (
-        "CHUNK_SIZE must be a named exported constant"
-    )
-
-
-def test_ac8_chunk_overlap_is_named_export():
-    """CHUNK_OVERLAP must be exported as a named constant, not hardcoded."""
-    with open(CHUNKER_JS) as f:
-        src = f.read()
-    assert re.search(r"export\s+const\s+CHUNK_OVERLAP\s*=\s*\d+", src), (
-        "CHUNK_OVERLAP must be a named exported constant"
-    )
 
 
 def test_ac8_chunkdocument_uses_constant_defaults():
@@ -449,14 +330,7 @@ def test_ac8_no_magic_numbers_in_chunking():
         src = f.read()
     # Look for suspicious hardcoded numbers (not constants)
     # This is a heuristic check; the main test is AC8 constants above
-    lines_with_numbers = [line for line in src.split('\n') if re.search(r'\b(500|100|120|30)\b', line)]
-    # Filter out lines that use constants or are comments/strings
-    suspicious = [
-        line for line in lines_with_numbers
-        if 'CHUNK_SIZE' not in line and 'CHUNK_OVERLAP' not in line and not line.strip().startswith('//')
-    ]
-    # Some magic numbers are expected (e.g., in comments, array indices)
-    # Just ensure the chunk size/overlap are via constants
+    # Just ensure the chunk size/overlap are via constants, not magic numbers
     assert re.search(r"export\s+const\s+CHUNK_SIZE", src), (
         "CHUNK_SIZE constant must be defined"
     )
