@@ -1,29 +1,83 @@
 import { pipeline } from "@xenova/transformers";
+import { resolveModel } from "./model-registry.js";
 
-const MODEL = process.env.EMBEDDING_MODEL ?? "Xenova/multilingual-e5-small";
-export const EMBEDDING_DIM = parseInt(process.env.DIM ?? "384", 10);
+const MODEL_NAME = process.env.EMBEDDING_MODEL ?? "Xenova/multilingual-e5-small";
+const _modelInfo = resolveModel(MODEL_NAME);
+
+export const EMBEDDING_DIM = _modelInfo.dim;
+export const EMBEDDING_MODEL = _modelInfo.xenovaId;
+export const MODEL_SPARSE = _modelInfo.sparse;
 
 let _pipe = null;
 
 async function getPipeline() {
   if (!_pipe) {
-    _pipe = await pipeline("feature-extraction", MODEL);
+    _pipe = await pipeline("feature-extraction", EMBEDDING_MODEL);
   }
   return _pipe;
 }
 
 export async function createEmbedder() {
-  // Eagerly load the pipeline so it is cached for all subsequent calls
   await getPipeline();
 
   return {
     dim: EMBEDDING_DIM,
+    sparse: MODEL_SPARSE,
+    modelName: MODEL_NAME,
     _pipelineInitCount: 1,
 
+    /**
+     * Embed texts into dense float vectors. Always returns an array of float arrays
+     * regardless of model — the stable interface used by search and ingest.
+     * @param {string[]} texts
+     * @returns {Promise<number[][]>}
+     */
     async embed(texts) {
       const pipe = await getPipeline();
       const output = await pipe(texts, { pooling: "mean", normalize: true });
       return output.tolist();
+    },
+
+    /**
+     * For BGE-M3: generate sparse lexical weights alongside dense vectors.
+     * Returns an array of {token_id: weight} objects (one per input text).
+     * For non-sparse models, returns an array of empty objects.
+     * @param {string[]} texts
+     * @returns {Promise<Record<string,number>[]>}
+     */
+    async embedSparse(texts) {
+      if (!MODEL_SPARSE) {
+        return texts.map(() => ({}));
+      }
+      const pipe = await getPipeline();
+      try {
+        // BGE-M3 sparse weights: ReLU over log(1 + logits) summed across sequence
+        const rawOutput = await pipe(texts, {
+          pooling: "none",
+          normalize: false,
+        });
+        if (!rawOutput || !rawOutput.dims || rawOutput.dims.length !== 3) {
+          return texts.map(() => ({}));
+        }
+        const [batch, seq, vocabSize] = rawOutput.dims;
+        const data = rawOutput.data;
+        const results = [];
+        for (let b = 0; b < batch; b++) {
+          const weights = {};
+          for (let v = 0; v < vocabSize; v++) {
+            let sum = 0;
+            for (let s = 0; s < seq; s++) {
+              const val = data[b * seq * vocabSize + s * vocabSize + v];
+              if (val > 0) sum += Math.log(1 + val);
+            }
+            if (sum > 0.01) weights[String(v)] = sum;
+          }
+          results.push(weights);
+        }
+        return results;
+      } catch {
+        return texts.map(() => ({}));
+      }
     },
   };
 }

@@ -240,6 +240,31 @@ export async function searchExact(query, k = 10) {
 
   try {
     if (THAI_RE.test(trimmed)) {
+      // Delegate to the swappable lexical scorer (default: pg_trgm word_similarity).
+      // A segmentation-based scorer can replace it via setLexicalScorer() without
+      // changing this call site.
+      const { searchLexical } = await import("./lexical/index.js");
+      const lexicalRows = await searchLexical(store, trimmed, k);
+
+      if (lexicalRows.length > 0) {
+        const rows = lexicalRows.map((row) => {
+          const body = `${row.headline ?? ""} ${row.details ?? ""}`.trim();
+          const { text, html } = excerptWithHighlight(body, trimmed);
+          return {
+            id: row.id,
+            headline: row.headline,
+            attachment_url: row.attachment_url,
+            chunk_index: row.chunk_index,
+            details: row.details,
+            text,
+            html,
+            score: row.lexical_score,
+          };
+        });
+        return flattenChunkResults(groupChunkRows(rows, k));
+      }
+
+      // Fall back to substring matching if trigram finds nothing.
       return flattenChunkResults(await searchExactSubstring(store, trimmed, k));
     }
 

@@ -19,9 +19,11 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createEmbedder } from "../embeddings/index.js";
 import { useMilvus, milvusAddress, usePostgres } from "../data/backend.js";
 import { flattenChunkResults } from "./flattenResults.js";
+import { defaultRetrievalConfig } from "../config/retrieval.js";
+import { mergeRrf } from "./rrf.js";
+import { normalise } from "../text/normalise.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const COLLECTION_PATH = join(__dirname, "..", "..", "collection.json");
@@ -47,7 +49,10 @@ function getMaxChunks(override) {
 
 let _embedder = null;
 async function getEmbedder() {
-  if (!_embedder) _embedder = await createEmbedder();
+  if (!_embedder) {
+    const { createEmbedder } = await import("../embeddings/index.js");
+    _embedder = await createEmbedder();
+  }
   return _embedder;
 }
 
@@ -71,7 +76,8 @@ function loadRows() {
   try {
     const rows = JSON.parse(readFileSync(COLLECTION_PATH, "utf8"));
     return Array.isArray(rows) ? rows : [];
-  } catch {
+  } catch (err) {
+    console.warn("[search] Failed to load collection.json:", err?.message ?? err);
     return [];
   }
 }
@@ -93,6 +99,30 @@ function cosineSimilarity(a, b) {
 // ---------------------------------------------------------------------------
 // Sentence splitting for best_passage extraction
 // ---------------------------------------------------------------------------
+
+// Thai and other scripts without ASCII terminators produce single segments that
+// span the entire chunk. When a segment exceeds this length, sub-window it so
+// selectBestPassage() has meaningful candidate units to score.
+const SENTENCE_MAX_CHARS = 200;
+const SENTENCE_WINDOW_SIZE = 150;
+
+function _subwindow(text, globalOffset) {
+  const windows = [];
+  let pos = 0;
+  const len = text.length;
+  while (pos < len) {
+    const sliceEnd = Math.min(pos + SENTENCE_WINDOW_SIZE, len);
+    const raw = text.slice(pos, sliceEnd);
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) {
+      const lead = raw.length - raw.trimStart().length;
+      const start = globalOffset + pos + lead;
+      windows.push({ text: trimmed, start, end: start + trimmed.length });
+    }
+    pos = sliceEnd;
+  }
+  return windows;
+}
 
 function splitIntoSentences(text) {
   const sentences = [];
@@ -128,7 +158,17 @@ function splitIntoSentences(text) {
     }
   }
 
-  return sentences;
+  // Fallback for Thai and other scripts: sub-window any segment that exceeds
+  // SENTENCE_MAX_CHARS so selectBestPassage() can rank meaningful sub-units.
+  const result = [];
+  for (const s of sentences) {
+    if (s.text.length > SENTENCE_MAX_CHARS) {
+      result.push(..._subwindow(s.text, s.start));
+    } else {
+      result.push(s);
+    }
+  }
+  return result;
 }
 
 async function selectBestPassage(docText, queryEmbedding, embedder) {
@@ -229,24 +269,65 @@ async function _searchMilvus(query, k, maxChunks) {
   const store = new MilvusStore(milvusAddress());
 
   const candidates = await store.search(queryEmbedding, EF);
-  const top = candidates.filter((r) => r.score > 0).slice(0, k);
+  if (candidates.length === 0) return [];
 
-  if (top.length === 0) return [];
+  // Group chunk hits by parent article ID (mirrors _searchFile / _searchPostgres).
+  const byArticleId = new Map();
+  for (const c of candidates) {
+    const articleId = c.id.split(":")[0];
+    if (!byArticleId.has(articleId)) {
+      byArticleId.set(articleId, []);
+    }
+    byArticleId.get(articleId).push(c);
+  }
+
+  // Build full article text for best_passage (concatenate chunk details in order).
+  const articleTexts = new Map();
+  for (const [articleId, chunks] of byArticleId) {
+    articleTexts.set(articleId, chunks.map((c) => c.details).join(" "));
+  }
+
+  // Sort chunks within each article by score, apply threshold + maxChunks cap.
+  const top = [...byArticleId.entries()]
+    .map(([articleId, chunks]) => {
+      const sorted = chunks.slice().sort((a, b) => b.score - a.score);
+      return { articleId, bestChunk: sorted[0], chunks: sorted.slice(0, maxChunks) };
+    })
+    .filter(({ bestChunk }) => bestChunk.score >= MIN_SCORE_THRESHOLD)
+    .sort((a, b) => b.bestChunk.score - a.bestChunk.score)
+    .slice(0, k);
 
   return Promise.all(
-    top.map(async (r) => {
-      const best_passage = await selectBestPassage(r.details, queryEmbedding, embedder);
-      const passages = [{ ...best_passage, score: parseFloat(r.score.toFixed(4)) }];
+    top.map(async ({ articleId, bestChunk, chunks }) => {
+      const articleText = articleTexts.get(articleId) ?? bestChunk.details;
+      const best_passage = await selectBestPassage(articleText, queryEmbedding, embedder);
+
+      const chunkPassages = await Promise.all(
+        chunks.map(async (chunk) => {
+          const chunkIndex = parseInt(chunk.id.split(":")[1] ?? "0", 10);
+          const p = await selectBestPassage(chunk.details, queryEmbedding, embedder);
+          return withChunkScopedOffsets(
+            { ...p, score: parseFloat(chunk.score.toFixed(4)) },
+            chunkIndex,
+          );
+        }),
+      );
+      const passages = deduplicatePassages(chunkPassages).sort((a, b) => b.score - a.score);
+
       return {
-        id: r.id,
-        headline: r.headline,
-        details: r.details.replace(/\s+/g, " ").trim().slice(0, 240),
-        score: parseFloat(r.score.toFixed(4)),
-        attachment_url: r.attachment_url ?? null,
-        attachment_url_type: resolveAttachmentUrlType(r.attachment_url),
+        id: articleId,
+        headline: bestChunk.headline,
+        details: bestChunk.details.replace(/\s+/g, " ").trim().slice(0, 240),
+        score: parseFloat(bestChunk.score.toFixed(4)),
+        attachment_url: bestChunk.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(bestChunk.attachment_url),
         best_passage,
         passages,
-        chunks: [{ text: r.details.replace(/\s+/g, " ").trim(), score: parseFloat(r.score.toFixed(4)) }],
+        chunks: chunks.map((c) => ({
+          text: c.details.replace(/\s+/g, " ").trim(),
+          score: parseFloat(c.score.toFixed(4)),
+          chunk_index: parseInt(c.id.split(":")[1] ?? "0", 10),
+        })),
       };
     }),
   );
@@ -345,6 +426,65 @@ async function _searchFile(query, k, maxChunks) {
 }
 
 // ---------------------------------------------------------------------------
+// File-backed lexical search (term-frequency scoring)
+// ---------------------------------------------------------------------------
+
+/**
+ * Simple term-frequency lexical scorer for the file-backed collection.
+ * Returns flat chunk rows sorted by descending lexical score.
+ *
+ * @param {string} query
+ * @param {number} k
+ * @returns {Array<object>}
+ */
+export function _lexicalSearchFile(query, k = 10) {
+  const rows = loadRows();
+  if (rows.length === 0) return [];
+  const trimmed = (query ?? "").trim();
+  if (!trimmed) return [];
+
+  const terms = trimmed.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [];
+
+  const scored = [];
+  for (const row of rows) {
+    const text = `${row.headline ?? ""} ${row.details ?? ""}`.toLowerCase();
+    const totalLen = Math.max(text.length, 1);
+    let lexicalScore = 0;
+    for (const term of terms) {
+      let count = 0;
+      let pos = 0;
+      while ((pos = text.indexOf(term, pos)) !== -1) {
+        count++;
+        pos += term.length;
+      }
+      lexicalScore += (count * term.length) / totalLen;
+    }
+    if (lexicalScore > 0) {
+      const articleId = row.id.split(":")[0];
+      const chunkIdx = row.chunk_index ?? parseInt((row.id.split(":")[1] ?? "0"), 10);
+      const text_ = (row.details ?? "").replace(/\s+/g, " ").trim();
+      scored.push({
+        id: articleId,
+        article_id: articleId,
+        chunk_index: chunkIdx,
+        headline: row.headline,
+        text: text_,
+        details: text_.slice(0, 240),
+        score: lexicalScore,
+        attachment_url: row.attachment_url ?? null,
+        attachment_url_type: resolveAttachmentUrlType(row.attachment_url),
+        best_passage: { text: text_, start_offset: 0, end_offset: text_.length, context: { before: "", after: "" }, score: lexicalScore },
+        passages: [{ text: text_, start_offset: 0, end_offset: text_.length, context: { before: "", after: "" }, score: lexicalScore }],
+        chunks: [{ text: text_, score: lexicalScore, chunk_index: chunkIdx }],
+      });
+    }
+  }
+
+  return scored.sort((a, b) => b.score - a.score).slice(0, k);
+}
+
+// ---------------------------------------------------------------------------
 // Postgres-backed search path
 // ---------------------------------------------------------------------------
 
@@ -417,6 +557,61 @@ async function _searchPostgres(query, k, maxChunks) {
 }
 
 // ---------------------------------------------------------------------------
+// Debug explain utilities
+// ---------------------------------------------------------------------------
+
+function _explainKey(result) {
+  return `${result.id}:${result.chunk_index ?? 0}`;
+}
+
+/**
+ * Record a pipeline stage into the per-result explain map.
+ * Each stage entry captures the result's score and rank at that stage,
+ * plus the rank change (rankDelta) from the immediately prior stage and
+ * the wall-clock time spent in the stage (latencyMs).
+ *
+ * @param {Map} explainMap - keyed by _explainKey(result)
+ * @param {Array} sortedResults - results sorted by score at this stage
+ * @param {string} stageName - e.g. 'dense', 'lexical', 'rrf', 'rerank'
+ * @param {number} latencyMs - ms spent in this stage
+ */
+function _recordExplainStage(explainMap, sortedResults, stageName, latencyMs) {
+  sortedResults.forEach((r, idx) => {
+    const key = _explainKey(r);
+    const stages = explainMap.get(key) ?? [];
+    const prevStage = stages[stages.length - 1];
+    stages.push({
+      stage: stageName,
+      score: r.score,
+      rank: idx + 1,
+      rankDelta: prevStage ? (idx + 1) - prevStage.rank : 0,
+      latencyMs: parseFloat(latencyMs.toFixed(2)),
+    });
+    explainMap.set(key, stages);
+  });
+}
+
+/**
+ * Enforce the per-article chunk cap on a flat, score-sorted result list.
+ * The dense stage caps chunks per article during grouping, but lexical + RRF
+ * fusion can reintroduce more chunks of the same article, so the final list
+ * must be re-capped. Input order is preserved (already ranked), so this keeps
+ * the top `maxChunks` chunks of each article.
+ */
+function capChunksPerArticle(results, maxChunks) {
+  const perArticle = new Map();
+  const kept = [];
+  for (const r of results) {
+    const aid = r.article_id ?? r.id;
+    const n = perArticle.get(aid) ?? 0;
+    if (n >= maxChunks) continue;
+    perArticle.set(aid, n + 1);
+    kept.push(r);
+  }
+  return kept;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -424,20 +619,184 @@ async function _searchPostgres(query, k, maxChunks) {
  * Search for articles matching the query.
  *
  * @param {string} query - The search query text.
- * @param {number} [k=10] - Maximum number of articles to return.
+ * @param {number} [k=10] - Maximum number of articles to return (overridden by retrievalConfig.topK).
  * @param {number|null} [maxChunksPerArticle] - Cap on chunk hits per article.
  *   Defaults to SEARCH_MAX_CHUNKS env var, then DEFAULT_MAX_CHUNKS (3).
+ * @param {object|null} [retrievalConfig] - Resolved RetrievalConfig; when provided its topK
+ *   takes precedence over k.  Pipeline flags (rerankEnabled, hybridEnabled) gate optional stages.
+ * @param {boolean} [debug=false] - When true, attaches an `explain` block to each result
+ *   containing per-stage scores, ranks, rank deltas, and latency.  Stages that did not run
+ *   are omitted entirely.  No explain overhead is incurred when debug is false.
  * @returns {Promise<Array>} Ranked chunk rows (flat), sorted by score globally.
+ *   Each row optionally contains `explain: ExplainStage[]` when debug=true.
  */
-export async function searchDocuments(query, k = 10, maxChunksPerArticle = null) {
+export async function searchDocuments(query, k = 10, maxChunksPerArticle = null, retrievalConfig = null, debug = false) {
+  const cfg = retrievalConfig ?? defaultRetrievalConfig();
+  const topK = cfg.topK ?? k;
   const maxChunks = getMaxChunks(maxChunksPerArticle);
+
+  // Normalise query text before embedding (same module used at ingest time)
+  const normalisedQuery = normalise(query, cfg.textNormalisationEnabled);
+
+  // When reranking is enabled, retrieve a larger candidate pool before reranking.
+  const rerankCandidateCount = cfg.rerankCandidateCount ?? 50;
+  const retrievalK = cfg.rerankEnabled ? Math.max(topK, rerankCandidateCount) : topK;
+
+  // --- Stage 1: Dense retrieval ---
+  const denseT0 = performance.now();
   let grouped;
   if (usePostgres()) {
-    grouped = await _searchPostgres(query, k, maxChunks);
+    grouped = await _searchPostgres(normalisedQuery, retrievalK, maxChunks);
   } else if (useMilvus()) {
-    grouped = await _searchMilvus(query, k, maxChunks);
+    grouped = await _searchMilvus(normalisedQuery, retrievalK, maxChunks);
   } else {
-    grouped = await _searchFile(query, k, maxChunks);
+    grouped = await _searchFile(normalisedQuery, retrievalK, maxChunks);
   }
-  return flattenChunkResults(grouped);
+  let results = flattenChunkResults(grouped);
+  const denseLatencyMs = performance.now() - denseT0;
+
+  // Build explain map only when debug is requested (zero overhead otherwise).
+  const explainMap = debug ? new Map() : null;
+  if (debug) {
+    _recordExplainStage(explainMap, results, "dense", denseLatencyMs);
+  }
+
+  // --- Stage 2 & 3: Lexical scoring + RRF fusion (hybrid pipeline) ---
+  if (cfg.hybridEnabled) {
+    const rrfK = cfg.rrfK ?? 60;
+
+    // Run lexical search on the appropriate backend.
+    const lexicalT0 = performance.now();
+    let lexicalResults = [];
+    try {
+      if (usePostgres()) {
+        const { getPgStore } = await import("../store/PgVectorStore.js");
+        const { searchLexical } = await import("../core/lexical/index.js");
+        const store = getPgStore();
+        const lexRows = await searchLexical(store, normalisedQuery, topK);
+        lexicalResults = lexRows.map((row) => {
+          const text = (row.details ?? "").replace(/\s+/g, " ").trim();
+          return {
+            id: row.id,
+            article_id: row.id,
+            chunk_index: row.chunk_index ?? 0,
+            headline: row.headline,
+            text,
+            details: text.slice(0, 240),
+            score: row.lexical_score,
+            attachment_url: row.attachment_url ?? null,
+            attachment_url_type: resolveAttachmentUrlType(row.attachment_url),
+            best_passage: { text, start_offset: 0, end_offset: text.length, context: { before: "", after: "" }, score: row.lexical_score },
+            passages: [{ text, start_offset: 0, end_offset: text.length, context: { before: "", after: "" }, score: row.lexical_score }],
+            chunks: [{ text, score: row.lexical_score, chunk_index: row.chunk_index ?? 0 }],
+          };
+        });
+      } else if (!useMilvus()) {
+        // File-backed backend: use term-frequency lexical scorer.
+        lexicalResults = _lexicalSearchFile(normalisedQuery, topK);
+      }
+      // Milvus has no native lexical path; lexicalResults stays [].
+    } catch {
+      lexicalResults = [];
+    }
+    const lexicalLatencyMs = performance.now() - lexicalT0; // stub — no real computation on Milvus path; will reflect BM25 cost when implemented
+
+    if (debug) {
+      _recordExplainStage(explainMap, lexicalResults, "lexical", lexicalLatencyMs);
+    }
+
+    // RRF fusion: merge dense + lexical lists.
+    const denseResultCount = results.length;
+    const rrfT0 = performance.now();
+    const fused = mergeRrf(results, lexicalResults, rrfK);
+    results = fused.slice(0, topK);
+    const rrfLatencyMs = performance.now() - rrfT0;
+
+    if (debug) {
+      _recordExplainStage(explainMap, results, "rrf", rrfLatencyMs);
+      // Fill in missing dense/lexical stages for results that appeared in only one list.
+      for (const r of results) {
+        const key = _explainKey(r);
+        const stages = explainMap.get(key) ?? [];
+        if (!stages.some((s) => s.stage === "lexical")) {
+          const rrfIdx = stages.findIndex((s) => s.stage === "rrf");
+          const miss = { stage: "lexical", score: 0, rank: lexicalResults.length + 1, rankDelta: 0, latencyMs: parseFloat(lexicalLatencyMs.toFixed(2)) };
+          if (rrfIdx >= 0) stages.splice(rrfIdx, 0, miss);
+          else stages.push(miss);
+          explainMap.set(key, stages);
+        }
+        if (!stages.some((s) => s.stage === "dense")) {
+          const lexIdx = stages.findIndex((s) => s.stage === "lexical");
+          const miss = { stage: "dense", score: 0, rank: denseResultCount + 1, rankDelta: 0, latencyMs: parseFloat(denseLatencyMs.toFixed(2)) };
+          if (lexIdx >= 0) stages.splice(lexIdx, 0, miss);
+          else stages.unshift(miss);
+          explainMap.set(key, stages);
+        }
+      }
+    }
+    // dense_rank, lexical_rank, fused_score are always set by mergeRrf on hybrid results.
+  }
+
+  // --- Stage 4: Cross-encoder reranking ---
+  if (cfg.rerankEnabled && results.length > 0) {
+    const rerankT0 = performance.now();
+
+    const { createReranker } = await import("../rerank/index.js");
+    const reranker = createReranker();
+    const chunks = results.map((r) => r.details ?? r.text ?? "");
+    const rerankScores = await reranker.rerank(normalisedQuery, chunks);
+    const reranked = results
+      .map((result, idx) => ({
+        result: { ...result, score: parseFloat((rerankScores[idx] ?? result.score).toFixed(6)) },
+        rerankScore: parseFloat((rerankScores[idx] ?? result.score).toFixed(6)),
+        preRerankRank: idx + 1,
+      }))
+      .sort((a, b) => b.rerankScore - a.rerankScore)
+      .map((item, idx) => ({ ...item, postRerankRank: idx + 1 }));
+
+    // Drop results the cross-encoder scored as irrelevant (<= 0) — these are
+    // junk/placeholder docs that dense retrieval surfaced on weak similarity but
+    // the reranker correctly rejects. Slice to topK after filtering.
+    const rerankedTop = reranked.filter(({ rerankScore }) => rerankScore > 0).slice(0, topK);
+
+    if (debug) {
+      const rerankLatencyMs = performance.now() - rerankT0;
+      rerankedTop.forEach(({ result, rerankScore, preRerankRank, postRerankRank }) => {
+        const key = _explainKey(result);
+        const stages = explainMap.get(key) ?? [];
+        const prevStage = stages[stages.length - 1];
+        stages.push({
+          stage: "rerank",
+          score: result.score,
+          rank: postRerankRank,
+          rankDelta: prevStage ? postRerankRank - prevStage.rank : 0,
+          latencyMs: parseFloat(rerankLatencyMs.toFixed(2)),
+          rerankScore,
+          preRerankRank,
+          postRerankRank,
+        });
+        explainMap.set(key, stages);
+      });
+    }
+
+    results = rerankedTop.map(({ result }) => result);
+  } else if (cfg.rerankEnabled) {
+    // No candidates to rerank; just return empty.
+    results = [];
+  }
+
+  // Enforce the per-article chunk cap on the final flat list. The dense stage
+  // caps during grouping, but lexical + RRF fusion can reintroduce more chunks
+  // of the same article, so re-cap here so no article shows more than maxChunks.
+  results = capChunksPerArticle(results, maxChunks);
+
+  // Attach explain blocks to each result (only when debug=true).
+  if (debug) {
+    results = results.map((r) => ({
+      ...r,
+      explain: explainMap.get(_explainKey(r)) ?? [],
+    }));
+  }
+
+  return results;
 }

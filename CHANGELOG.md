@@ -3,6 +3,53 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 15 (2026-06-26)
+
+- #108: Make re-embed completion message use dynamic model name instead of hardcoded string
+- #109: Deduplicate overlapping static assertions from two #98 test files into conftest.py
+- #118: Fix _searchMilvus to group chunk hits by parent article (matches file/postgres behaviour)
+- #119: Fix Milvus search path to apply MIN_SCORE_THRESHOLD instead of bare score>0 filter
+- #121: Add character-count sub-window fallback in splitIntoSentences() for Thai text
+- #143: Add range validation for topK (1–500) and hybridFusionWeight (0.0–1.0) in resolveRetrievalConfig — returns HTTP 400 on violation
+- #144: Add regression tests anchoring hybrid pipeline / debug-flag decoupling behaviour
+- #145: Surface infrastructure errors in run_eval.py — warns to stderr per failed query, exits 1 when all queries fail
+- #146: Fix Python eval default port from 7070 to 8000 in run_eval.py and run_ablation.py
+- #147: Add stub comment to lexical latency line in searchDocuments clarifying 0ms is not real BM25 cost
+
+## Sprint 14 (2026-06-25)
+
+- #59: Extract shared avgEmbeddings/collapseToArticles to src/store/embedUtils.js (single source of truth)
+- #60: Update DESIGN.md postgres backend status from "not yet wired" to fully implemented
+- #61: Consolidate Postgres connection config — pg_client.js now prefers DATABASE_URL; PgVectorStore gains checkHealth()
+- #71: Fix silent image-fragment loss in _ocrPage — composite all fragments instead of discarding smaller ones
+- #73: Call pdfProxy.destroy() after PDF text extraction to prevent WASM/worker resource leak
+- #85: Move sharp from dependencies to devDependencies (not required at runtime)
+- #86: Remove dead validateArticleId import from server.mjs
+- #87: Make PUT /articles/:id non-destructive — embed new chunks before deleting old ones
+- #88: Add migration 006 enforcing NOT NULL on article_id and chunk_index columns
+- #90: Remove duplicate test file test_canvas_optional_deps__74.py
+- #107: Fix reEmbedPostgres row mapping to preserve article_id and chunk_index in upsert payload
+
+## Sprint 13.1 (2026-06-25)
+
+- #140: Add Thai word-boundary chunking mode behind config flag
+
+## Sprint 13 (2026-06-25)
+
+- #135: Add trigram-based lexical search for Thai text
+- #136: Add hybrid dense + lexical retrieval with RRF fusion
+- #138: Wire reranker into search pipeline behind rerank flag
+- #139: Add Thai text normalization at ingest and query time
+- #141: Support selectable larger embedding models via config
+
+## Sprint 12 (2026-06-24)
+
+- #130: Add configurable, per-request retrieval pipeline with presets
+- #131: Add debug explain mode to search API
+- #132: Expand Thai eval set and add nDCG and MRR metrics
+- #133: Add ablation runner for comparing retrieval presets
+- #134: Upgrade Compare Tab into Configuration Audit Tool
+
 ## Sprint 11 (2026-06-20)
 
 - #102: Chunk documents into overlapping vectors for semantic search (chunk defaults: 400 chars / 80 overlap; CHUNK_SIZE/CHUNK_OVERLAP env var overrides; listChunks API on all backends)

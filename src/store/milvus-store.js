@@ -163,25 +163,15 @@ export class MilvusStore {
     const hits = searchResult.results || [];
     if (hits.length === 0) return [];
 
-    // Collapse: keep best-scoring chunk per article.
-    const byArticleId = new Map();
-    for (const hit of hits) {
-      const articleId = hit.id.split(":")[0];
-      if (!byArticleId.has(articleId) || hit.score > byArticleId.get(articleId).score) {
-        byArticleId.set(articleId, {
-          id: articleId,
-          headline: hit.headline,
-          details: hit.details,
-          attachment_url: hit.attachment_url,
-          score: hit.score,
-        });
-      }
-    }
-
-    return [...byArticleId.values()]
-      .filter((r) => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, k);
+    // Return raw chunk hits; grouping by parent article is the caller's responsibility
+    // (mirrors PgVectorStore which also returns flat chunk rows).
+    return hits.map((hit) => ({
+      id: hit.id,
+      headline: hit.headline,
+      details: hit.details,
+      attachment_url: hit.attachment_url,
+      score: hit.score,
+    }));
   }
 
   async listArticles() {

@@ -10,6 +10,10 @@ class PgClientWrapper {
   }
 
   _createPool() {
+    const connectionString = process.env.DATABASE_URL;
+    if (connectionString) {
+      return new Pool({ connectionString });
+    }
     return new Pool({
       host: process.env.POSTGRES_HOST || "localhost",
       port: parseInt(process.env.POSTGRES_PORT || "5432", 10),
