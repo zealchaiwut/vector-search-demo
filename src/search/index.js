@@ -76,7 +76,8 @@ function loadRows() {
   try {
     const rows = JSON.parse(readFileSync(COLLECTION_PATH, "utf8"));
     return Array.isArray(rows) ? rows : [];
-  } catch {
+  } catch (err) {
+    console.warn("[search] Failed to load collection.json:", err?.message ?? err);
     return [];
   }
 }
