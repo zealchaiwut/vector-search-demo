@@ -1651,13 +1651,14 @@
   }
 
   // Map a raw score to a single bounded relevance percent (0–100).
-  // Cosine / model scores in [0,1] map linearly (≈100% only on a near-exact
-  // match). Reranker scores can exceed 1 (sidecar n-gram path); squash those
-  // asymptotically toward 100 so the bar never overflows and isn't misread.
+  // One continuous, strictly monotonic squash for ALL scores (cosine in [0,1]
+  // and reranker scores that exceed 1): v = score / (1 + score). This is
+  // order-preserving, so the displayed % always descends in rank order — and it
+  // only approaches 100% for a very strong (near-exact) match, never overflows.
   function relevancePct(score) {
     if (typeof score !== "number" || !isFinite(score)) return 0;
-    const v = score <= 1 ? Math.max(0, score) : 1 - 1 / (1 + score);
-    return Math.round(Math.min(1, v) * 100);
+    const s = Math.max(0, score);
+    return Math.round((s / (1 + s)) * 100);
   }
 
   function chunkSnippetText(r) {
