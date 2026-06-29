@@ -591,6 +591,26 @@ function _recordExplainStage(explainMap, sortedResults, stageName, latencyMs) {
   });
 }
 
+/**
+ * Enforce the per-article chunk cap on a flat, score-sorted result list.
+ * The dense stage caps chunks per article during grouping, but lexical + RRF
+ * fusion can reintroduce more chunks of the same article, so the final list
+ * must be re-capped. Input order is preserved (already ranked), so this keeps
+ * the top `maxChunks` chunks of each article.
+ */
+function capChunksPerArticle(results, maxChunks) {
+  const perArticle = new Map();
+  const kept = [];
+  for (const r of results) {
+    const aid = r.article_id ?? r.id;
+    const n = perArticle.get(aid) ?? 0;
+    if (n >= maxChunks) continue;
+    perArticle.set(aid, n + 1);
+    kept.push(r);
+  }
+  return kept;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -734,8 +754,10 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
       .sort((a, b) => b.rerankScore - a.rerankScore)
       .map((item, idx) => ({ ...item, postRerankRank: idx + 1 }));
 
-    // Slice to topK after reranking.
-    const rerankedTop = reranked.slice(0, topK);
+    // Drop results the cross-encoder scored as irrelevant (<= 0) — these are
+    // junk/placeholder docs that dense retrieval surfaced on weak similarity but
+    // the reranker correctly rejects. Slice to topK after filtering.
+    const rerankedTop = reranked.filter(({ rerankScore }) => rerankScore > 0).slice(0, topK);
 
     if (debug) {
       const rerankLatencyMs = performance.now() - rerankT0;
@@ -762,6 +784,11 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
     // No candidates to rerank; just return empty.
     results = [];
   }
+
+  // Enforce the per-article chunk cap on the final flat list. The dense stage
+  // caps during grouping, but lexical + RRF fusion can reintroduce more chunks
+  // of the same article, so re-cap here so no article shows more than maxChunks.
+  results = capChunksPerArticle(results, maxChunks);
 
   // Attach explain blocks to each result (only when debug=true).
   if (debug) {
