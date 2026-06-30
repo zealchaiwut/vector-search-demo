@@ -44,9 +44,26 @@ program
   .command("search")
   .description("Search indexed documents")
   .argument("[query...]", "search query terms")
-  .action(async (queryParts: string[]) => {
+  .option("--model <name>", "embedding model to use for vector search (must be registered and have embeddings stored via embed-corpus)")
+  .option("-k <number>", "number of results to return", "10")
+  .action(async (queryParts: string[], opts: { model?: string; k?: string }) => {
     const { runSearch } = await import("./commands/search.js");
-    await runSearch(queryParts);
+    // Pass model as a synthetic flag so the existing argv parser can handle it.
+    const extra: string[] = [];
+    if (opts.model) extra.push("--model", opts.model);
+    if (opts.k) extra.push("-k", opts.k);
+    await runSearch([...queryParts, ...extra]);
+  });
+
+program
+  .command("embed-corpus")
+  .description("Embed all stored chunks under a named model for corpus comparison")
+  .option("--model <name>", "embedding model to use (required; e.g. BAAI/bge-m3)")
+  .action(async (opts: { model?: string }) => {
+    const { runEmbedCorpus } = await import("./commands/embed-corpus.js");
+    const args: string[] = [];
+    if (opts.model) args.push("--model", opts.model);
+    await runEmbedCorpus(args);
   });
 
 program
