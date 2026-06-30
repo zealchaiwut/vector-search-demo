@@ -179,6 +179,19 @@ export function parseConfigOverrides(params) {
     );
   if (params.chunkingMode !== undefined)
     out.chunkingMode = String(params.chunkingMode);
+  // searchMode: 'semantic' | 'keyword' | 'hybrid' — derives hybridEnabled/rerankEnabled
+  if (params.searchMode !== undefined) {
+    const mode = String(params.searchMode);
+    out.searchMode = mode;
+    if (mode === "semantic") {
+      out.hybridEnabled = false;
+      out.rerankEnabled = false;
+    } else if (mode === "hybrid") {
+      out.hybridEnabled = true;
+      out.rerankEnabled = false;
+    }
+    // 'keyword' mode is routed to /search/exact at the server layer
+  }
   return out;
 }
 
