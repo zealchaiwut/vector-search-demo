@@ -35,8 +35,13 @@ for download. Includes a recall@k evaluation harness.
   each with `text` and `score`) in addition to `best_passage`. The number of chunk hits
   surfaced per article is capped by `SEARCH_MAX_CHUNKS` (default 3) or the `n` query
   parameter on `/search`.
-- **Exact/keyword search** — `GET /search/exact` runs Postgres FTS (`plainto_tsquery` +
-  `ts_rank` over a GIN-indexed `tsvector` column). Only active when `DB_BACKEND=postgres`.
+- **Exact/keyword search** — `GET /search/exact` runs Postgres FTS over a GIN-indexed
+  `tsvector` column. Multi-term queries use an OR-`tsquery` (`credit | card`) scored with
+  `ts_rank_cd` plus a proximity boost for exact adjacent phrases, so partial matches still
+  return results instead of an implicit-AND zero set. Thai queries are word-segmented with
+  `Intl.Segmenter` and matched against a `simple`-dictionary `ts_simple` column. Only active
+  when `DB_BACKEND=postgres`. Keyword and hybrid result passages highlight matched terms with
+  `<mark>`, surfacing the passage with the greatest number of matched terms.
 - **Configuration Audit Tool (Compare tab)** — the search UI has a side-by-side tab
   with two preset selector dropdowns (Preset A / Preset B). Submitting a query fires
   parallel requests under each preset with explain mode enabled; each result card shows
@@ -102,13 +107,20 @@ node dist/cli.js ping                            # check Milvus (requires milvus
 ```sh
 node dist/cli.js init                 # create an empty, indexed collection
 node dist/cli.js ingest               # ingest the built-in corpus
-node dist/cli.js search <query...>    # search indexed documents (prints results)
+node dist/cli.js search <query...>    # search indexed documents (prints results); add --model <name> to query a secondary model's embedding space
 node dist/cli.js serve                # start the Fastify server
 node dist/cli.js ping                 # check Milvus connectivity (Docker required)
 node dist/cli.js verify               # check every article has ≥1 chunk and every chunk has a non-null embedding
 node dist/cli.js re-embed             # recompute embeddings for all existing articles/chunks
 node dist/cli.js rechunk              # delete and regenerate all chunks using current CHUNK_SIZE/CHUNK_OVERLAP settings, then re-embed
+node dist/cli.js embed-corpus --model <name>  # embed all stored chunks under a named model (e.g. BAAI/bge-m3) into chunk_embeddings for corpus comparison; idempotent
 ```
+
+`embed-corpus` and `search --model <name>` let you index the same corpus under
+multiple embedding models at once and compare retrieval quality. Vectors are
+stored per-model in the `chunk_embeddings` table (postgres) or
+`chunk_embeddings.json` (mock); the default search model is unaffected.
+Searching with an unregistered model name returns a clear error.
 
 ## npm scripts
 
@@ -361,8 +373,12 @@ src/search/index.js  normalises query, embeds with "query: " e5 prefix, runs den
                      via cross-encoder (src/search/reranker.js); groups chunk hits by article_id
                      (capped at SEARCH_MAX_CHUNKS); returns passages and chunks per result;
                      optional debug explain trail (per-stage score/rank/latency) per result
-src/core/lexical/index.js  Postgres lexical search via pg_trgm word_similarity + ts_rank
-src/core/lexical/trigramScorer.js  Scoring helpers for trigram-based Thai lexical search
+src/core/lexical/index.js  Postgres lexical search behind setLexicalScorer (default: tsvectorOrScorer)
+src/core/lexical/tsvectorOrScorer.js  OR-tsquery scorer (ts_rank_cd + phrase proximity boost); Thai via ts_simple, falls back to trigram
+src/core/lexical/thaiSegmenter.js  Thai word segmentation + query tokenisation via Intl.Segmenter
+src/core/lexical/trigramScorer.js  Scoring helpers for trigram-based Thai lexical search (fallback)
+src/store/MultiModelStore.js  file-backed per-chunk/per-model embedding store (chunk_embeddings.json)
+src/commands/embed-corpus.js  embed all chunks under a named model into chunk_embeddings (mock + postgres)
 src/milvus/client.js   singleton MilvusClient wrapper (dynamic SDK import)
 src/milvus/schema.ts   Milvus collection schema: HNSW index, COSINE metric, dim=384
 src/server.mjs       HTTP: /health, /search (GET+POST, preset/config overrides, debug mode),
