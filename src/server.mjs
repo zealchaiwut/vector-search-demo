@@ -155,6 +155,13 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // GET /api/models — list canonical embedding models available for the Compare tab
+  if (req.method === "GET" && pathname === "/api/models") {
+    const { CANONICAL_MODELS } = await import("./embeddings/model-registry.js");
+    jsonResponse(res, 200, { models: CANONICAL_MODELS });
+    return;
+  }
+
   // GET /api/config — deployment label for the UI (ENV from .env)
   if (req.method === "GET" && pathname === "/api/config") {
     const env = (process.env.ENV ?? "local").trim().toLowerCase();
