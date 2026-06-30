@@ -38,9 +38,15 @@ if (command === "search") {
     process.stderr.write(`Error: ${err.message}\n`);
     process.exit(1);
   });
+} else if (command === "embed-corpus") {
+  const { runEmbedCorpus } = await import("./commands/embed-corpus.js");
+  runEmbedCorpus(args).catch((err) => {
+    process.stderr.write(`Error: ${err.message}\n`);
+    process.exit(1);
+  });
 } else {
   process.stderr.write(
-    `Usage: commander <command> [options]\n\nCommands:\n  search <query> [-k <number>]  Search indexed documents\n  ingest                        Index synthetic documents into the collection\n  init [--recreate]             Provision the Milvus documents collection\n  ping                          Check Milvus connectivity\n  verify                        Check vector/article count integrity\n  re-embed                      Recompute embeddings for all existing articles and chunks\n`
+    `Usage: commander <command> [options]\n\nCommands:\n  search <query> [-k <number>] [--model <name>]  Search indexed documents\n  ingest                        Index synthetic documents into the collection\n  init [--recreate]             Provision the Milvus documents collection\n  ping                          Check Milvus connectivity\n  verify                        Check vector/article count integrity\n  re-embed                      Recompute embeddings for all existing articles and chunks\n  embed-corpus --model <name>   Embed all chunks under a named model for corpus comparison\n`
   );
   process.exit(1);
 }

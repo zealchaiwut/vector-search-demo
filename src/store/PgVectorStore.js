@@ -278,6 +278,90 @@ export class PgVectorStore {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Multi-model chunk embeddings (chunk_embeddings table — migration 007)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Upsert a per-model vector for a chunk into chunk_embeddings.
+   * Idempotent: ON CONFLICT replaces the existing vector for (chunk_id, model_id).
+   *
+   * @param {string} chunkId
+   * @param {string} modelId
+   * @param {number[]} vector
+   * @param {number} dimension
+   */
+  async upsertChunkEmbedding(chunkId, modelId, vector, dimension) {
+    await this._pool.query(
+      `INSERT INTO chunk_embeddings (chunk_id, model_id, vector, dimension)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (chunk_id, model_id)
+       DO UPDATE SET vector = EXCLUDED.vector, dimension = EXCLUDED.dimension`,
+      [chunkId, modelId, vector, dimension]
+    );
+  }
+
+  /**
+   * Search articles using a pre-stored model's vectors in chunk_embeddings.
+   * Computes cosine similarity in-process (sequential scan — no HNSW for real[]).
+   * Joins with articles to retrieve metadata.
+   *
+   * @param {number[]} queryVector
+   * @param {string} modelId
+   * @param {number} limit
+   * @returns {Promise<Array<{id, headline, details, score, attachment_url}>>}
+   */
+  async searchByModel(queryVector, modelId, limit = 10) {
+    const result = await this._pool.query(
+      `SELECT ce.chunk_id,
+              ce.vector,
+              a.article_id,
+              a.headline,
+              a.details,
+              a.attachment_url
+       FROM chunk_embeddings ce
+       JOIN articles a ON a.id = ce.chunk_id
+       WHERE ce.model_id = $1`,
+      [modelId]
+    );
+
+    if (result.rows.length === 0) return [];
+
+    function dot(a, b) {
+      let s = 0;
+      for (let i = 0; i < a.length && i < b.length; i++) s += a[i] * b[i];
+      return s;
+    }
+
+    const scored = result.rows.map((row) => ({
+      articleId: row.article_id ?? row.chunk_id.split(":")[0],
+      headline: row.headline,
+      details: row.details,
+      attachment_url: row.attachment_url,
+      score: dot(queryVector, Array.isArray(row.vector) ? row.vector : []),
+    }));
+
+    // Collapse to best chunk per article
+    const byArticle = new Map();
+    for (const item of scored) {
+      const existing = byArticle.get(item.articleId);
+      if (!existing || item.score > existing.score) {
+        byArticle.set(item.articleId, item);
+      }
+    }
+
+    return [...byArticle.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((r) => ({
+        id: r.articleId,
+        headline: r.headline,
+        details: r.details,
+        score: parseFloat(r.score.toFixed(4)),
+        attachment_url: r.attachment_url,
+      }));
+  }
+
   async end() {
     await this._pool.end();
   }
