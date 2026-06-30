@@ -1756,16 +1756,38 @@
     return boldQueryWords(escapeHtml(text), query);
   }
 
-  function renderFlatChunkCard(r, query, topScore, { compact = false, isKeyword = false } = {}) {
+  // Highlight matched query terms in an escaped text string with <mark> elements.
+  // Used for keyword and hybrid search results so term-level highlighting is
+  // visually consistent with semantic passage highlighting (AC6 of issue #188).
+  // Returns plain escaped text when no terms match (AC5 — no empty <mark> wrappers).
+  function lexicalTermHighlight(text, query) {
+    if (!text) return "";
+    const escaped = escapeHtml(text);
+    const tokens = (String(query || "").toLowerCase().match(/[a-z0-9]{3,}/g) || [])
+      .filter(t => !STOPWORDS.has(t));
+    if (tokens.length === 0) return escaped;
+    const uniq = [...new Set(tokens)]
+      .sort((a, b) => b.length - a.length)
+      .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const re = new RegExp(`\\b(${uniq.join("|")})\\b`, "gi");
+    return escaped.replace(re, '<mark>$&</mark>');
+  }
+
+  function renderFlatChunkCard(r, query, topScore, { compact = false, isKeyword = false, mode = "semantic" } = {}) {
     const headline = r.headline ?? "(untitled)";
     const articleId = r.article_id ?? r.id ?? "";
     const attachmentUrl = r.attachment_url ?? null;
     const relPct = relevancePct(r.score);
     const snippet = chunkSnippetText(r);
     const fullPassage = viewFullPassageText(r);
-    const bodyHtml = isKeyword
-      ? keywordSnippetHtml(r, query)
-      : `<mark>${highlightPassage(snippet, query)}</mark>`;
+    // Keyword and hybrid modes highlight individual matched terms with <mark>;
+    // semantic mode wraps the entire best passage in <mark> (existing behaviour).
+    const isLexical = mode === "keyword" || mode === "hybrid" || mode === "hybrid-rerank";
+    const bodyHtml = isLexical
+      ? lexicalTermHighlight(snippet, query)
+      : (isKeyword
+        ? keywordSnippetHtml(r, query)
+        : `<mark>${highlightPassage(snippet, query)}</mark>`);
 
     if (compact && isKeyword) {
       return `
@@ -1834,11 +1856,11 @@
           </div>`;
   }
 
-  function renderResults(results, query) {
+  function renderResults(results, query, mode = "semantic") {
     const { visible, total } = capResultRows(results);
     const top = Math.max(...visible.map((r) => r.score), 0);
     resultsEl.innerHTML = visible
-      .map((r) => renderFlatChunkCard(r, query, top))
+      .map((r) => renderFlatChunkCard(r, query, top, { mode }))
       .join("");
 
     requestAnimationFrame(() => {
@@ -1868,7 +1890,7 @@
         statusEl.textContent = "";
         renderEmpty();
       } else {
-        const total = renderResults(results, query);
+        const total = renderResults(results, query, mode);
         const visibleCount = Math.min(results.length, DISPLAY_CAP);
         statusEl.textContent = formatResultStatus(total, visibleCount);
       }
