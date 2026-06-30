@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EMBEDDING_DIM, EMBEDDING_MODEL } from "../embeddings/index.js";
+import { segmentThai } from "../core/lexical/thaiSegmenter.js";
 
 const { Pool } = pg;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -175,17 +176,21 @@ export class PgVectorStore {
       const articleId = colonIdx >= 0 ? row.id.slice(0, colonIdx) : row.id;
       const chunkIndex = colonIdx >= 0 ? parseInt(row.id.slice(colonIdx + 1), 10) : 0;
       const vec = pgvector.toSql(row.embedding);
+      // Pre-segment Thai text so individual word tokens are stored in ts_simple
+      const rawText = `${row.headline ?? ''} ${row.details ?? ''}`;
+      const segmentedText = segmentThai(rawText);
       await this._pool.query(
-        `INSERT INTO articles (id, article_id, chunk_index, headline, details, attachment_url, embedding)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO articles (id, article_id, chunk_index, headline, details, attachment_url, embedding, ts_simple)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, to_tsvector('simple', $8))
          ON CONFLICT (id) DO UPDATE
            SET article_id     = EXCLUDED.article_id,
                chunk_index    = EXCLUDED.chunk_index,
                headline       = EXCLUDED.headline,
                details        = EXCLUDED.details,
                attachment_url = EXCLUDED.attachment_url,
-               embedding      = EXCLUDED.embedding`,
-        [row.id, articleId, chunkIndex, row.headline, row.details, row.attachment_url ?? null, vec]
+               embedding      = EXCLUDED.embedding,
+               ts_simple      = EXCLUDED.ts_simple`,
+        [row.id, articleId, chunkIndex, row.headline, row.details, row.attachment_url ?? null, vec, segmentedText]
       );
     }
   }
@@ -276,6 +281,90 @@ export class PgVectorStore {
       details,
       attachment_url: first.attachment_url,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Multi-model chunk embeddings (chunk_embeddings table — migration 007)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Upsert a per-model vector for a chunk into chunk_embeddings.
+   * Idempotent: ON CONFLICT replaces the existing vector for (chunk_id, model_id).
+   *
+   * @param {string} chunkId
+   * @param {string} modelId
+   * @param {number[]} vector
+   * @param {number} dimension
+   */
+  async upsertChunkEmbedding(chunkId, modelId, vector, dimension) {
+    await this._pool.query(
+      `INSERT INTO chunk_embeddings (chunk_id, model_id, vector, dimension)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (chunk_id, model_id)
+       DO UPDATE SET vector = EXCLUDED.vector, dimension = EXCLUDED.dimension`,
+      [chunkId, modelId, vector, dimension]
+    );
+  }
+
+  /**
+   * Search articles using a pre-stored model's vectors in chunk_embeddings.
+   * Computes cosine similarity in-process (sequential scan — no HNSW for real[]).
+   * Joins with articles to retrieve metadata.
+   *
+   * @param {number[]} queryVector
+   * @param {string} modelId
+   * @param {number} limit
+   * @returns {Promise<Array<{id, headline, details, score, attachment_url}>>}
+   */
+  async searchByModel(queryVector, modelId, limit = 10) {
+    const result = await this._pool.query(
+      `SELECT ce.chunk_id,
+              ce.vector,
+              a.article_id,
+              a.headline,
+              a.details,
+              a.attachment_url
+       FROM chunk_embeddings ce
+       JOIN articles a ON a.id = ce.chunk_id
+       WHERE ce.model_id = $1`,
+      [modelId]
+    );
+
+    if (result.rows.length === 0) return [];
+
+    function dot(a, b) {
+      let s = 0;
+      for (let i = 0; i < a.length && i < b.length; i++) s += a[i] * b[i];
+      return s;
+    }
+
+    const scored = result.rows.map((row) => ({
+      articleId: row.article_id ?? row.chunk_id.split(":")[0],
+      headline: row.headline,
+      details: row.details,
+      attachment_url: row.attachment_url,
+      score: dot(queryVector, Array.isArray(row.vector) ? row.vector : []),
+    }));
+
+    // Collapse to best chunk per article
+    const byArticle = new Map();
+    for (const item of scored) {
+      const existing = byArticle.get(item.articleId);
+      if (!existing || item.score > existing.score) {
+        byArticle.set(item.articleId, item);
+      }
+    }
+
+    return [...byArticle.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map((r) => ({
+        id: r.articleId,
+        headline: r.headline,
+        details: r.details,
+        score: parseFloat(r.score.toFixed(4)),
+        attachment_url: r.attachment_url,
+      }));
   }
 
   async end() {

@@ -3,6 +3,12 @@
 Per-sprint changelog for vector-search-demo. Entries are written by the documentor when a
 sprint finishes. Dated per-sprint files live under [docs/changelog/](docs/changelog/).
 
+## Sprint 16 (2026-06-30)
+
+- #185: Support multi-model chunk embeddings for corpus comparison (new `chunk_embeddings` table / `chunk_embeddings.json`, `embed-corpus --model <name>` command, and `search --model <name>` flag)
+- #187: Improve multi-term keyword matching and proximity ranking (OR-`tsquery` with `ts_rank_cd`, phrase-adjacency boost, and Thai word segmentation via `Intl.Segmenter`)
+- #188: Highlight matched query terms in keyword and hybrid results (`<mark>` term highlighting and best-passage-by-term-count selection for lexical modes)
+
 ## Sprint 15 (2026-06-26)
 
 - #108: Make re-embed completion message use dynamic model name instead of hardcoded string

@@ -213,6 +213,58 @@ async function selectBestPassage(docText, queryEmbedding, embedder) {
   };
 }
 
+/**
+ * Select the sentence in docText that contains the greatest number of matched
+ * query terms (lexical best-passage selection for keyword and hybrid modes).
+ * Falls back to the first sentence when no terms match any sentence.
+ *
+ * @param {string} docText - Chunk or article text to scan.
+ * @param {string[]} queryTerms - Lower-cased, pre-filtered query tokens.
+ * @returns {{ text, start_offset, end_offset, context, match_count }}
+ */
+function selectBestPassageByTerms(docText, queryTerms) {
+  const sentences = splitIntoSentences(docText);
+  if (sentences.length === 0) {
+    const trimmed = docText.trim();
+    return {
+      text: trimmed,
+      start_offset: 0,
+      end_offset: trimmed.length,
+      context: { before: "", after: "" },
+      match_count: 0,
+    };
+  }
+
+  let bestIdx = 0;
+  let bestCount = -1;
+  for (let i = 0; i < sentences.length; i++) {
+    const lower = sentences[i].text.toLowerCase();
+    const count = queryTerms.reduce((n, t) => n + (lower.includes(t) ? 1 : 0), 0);
+    if (count > bestCount) {
+      bestCount = count;
+      bestIdx = i;
+    }
+  }
+
+  const best = sentences[bestIdx];
+  const before = sentences
+    .slice(Math.max(0, bestIdx - CONTEXT_SENTENCES), bestIdx)
+    .map((s) => s.text)
+    .join(" ");
+  const after = sentences
+    .slice(bestIdx + 1, bestIdx + 1 + CONTEXT_SENTENCES)
+    .map((s) => s.text)
+    .join(" ");
+
+  return {
+    text: best.text,
+    start_offset: best.start,
+    end_offset: best.end,
+    context: { before, after },
+    match_count: Math.max(bestCount, 0),
+  };
+}
+
 const OFFSET_PROXIMITY = 20;
 const CHUNK_OFFSET_BASE = 1_000_000;
 
@@ -783,6 +835,23 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
   } else if (cfg.rerankEnabled) {
     // No candidates to rerank; just return empty.
     results = [];
+  }
+
+  // For hybrid mode, re-select each result's passage by term count rather than
+  // semantic cosine similarity so the surfaced passage contains the most matched
+  // query terms (AC3 of issue #188).
+  if (cfg.hybridEnabled) {
+    const queryTerms = normalisedQuery.toLowerCase().split(/\s+/).filter((t) => t.length >= 2);
+    results = results.map((r) => {
+      const text = r.text || r.details || "";
+      if (!text || queryTerms.length === 0) return r;
+      const newPassage = selectBestPassageByTerms(text, queryTerms);
+      return {
+        ...r,
+        passages: [{ ...(r.passages?.[0] ?? {}), ...newPassage }],
+        best_passage: newPassage,
+      };
+    });
   }
 
   // Enforce the per-article chunk cap on the final flat list. The dense stage
