@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EMBEDDING_DIM, EMBEDDING_MODEL } from "../embeddings/index.js";
+import { segmentThai } from "../core/lexical/thaiSegmenter.js";
 
 const { Pool } = pg;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -175,17 +176,21 @@ export class PgVectorStore {
       const articleId = colonIdx >= 0 ? row.id.slice(0, colonIdx) : row.id;
       const chunkIndex = colonIdx >= 0 ? parseInt(row.id.slice(colonIdx + 1), 10) : 0;
       const vec = pgvector.toSql(row.embedding);
+      // Pre-segment Thai text so individual word tokens are stored in ts_simple
+      const rawText = `${row.headline ?? ''} ${row.details ?? ''}`;
+      const segmentedText = segmentThai(rawText);
       await this._pool.query(
-        `INSERT INTO articles (id, article_id, chunk_index, headline, details, attachment_url, embedding)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO articles (id, article_id, chunk_index, headline, details, attachment_url, embedding, ts_simple)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, to_tsvector('simple', $8))
          ON CONFLICT (id) DO UPDATE
            SET article_id     = EXCLUDED.article_id,
                chunk_index    = EXCLUDED.chunk_index,
                headline       = EXCLUDED.headline,
                details        = EXCLUDED.details,
                attachment_url = EXCLUDED.attachment_url,
-               embedding      = EXCLUDED.embedding`,
-        [row.id, articleId, chunkIndex, row.headline, row.details, row.attachment_url ?? null, vec]
+               embedding      = EXCLUDED.embedding,
+               ts_simple      = EXCLUDED.ts_simple`,
+        [row.id, articleId, chunkIndex, row.headline, row.details, row.attachment_url ?? null, vec, segmentedText]
       );
     }
   }

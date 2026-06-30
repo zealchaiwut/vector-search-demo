@@ -142,28 +142,53 @@ function groupChunkRows(rows, k) {
 }
 
 /**
+ * Build an OR tsquery string from whitespace-tokenised query terms.
+ * e.g. "credit card" → "credit | card"
+ * Special tsquery chars are stripped from each term.
+ *
+ * @param {string} query
+ * @returns {string|null}
+ */
+function buildEnglishOrTsquery(query) {
+  const terms = query
+    .trim()
+    .split(/\s+/)
+    .map((t) => t.replace(/[&|!():*'\\<>]/g, '').trim())
+    .filter(Boolean);
+  if (terms.length === 0) return null;
+  return terms.join(' | ');
+}
+
+/**
  * @param {import("../store/PgVectorStore.js").PgVectorStore} store
  * @param {string} query
  * @param {number} k
  */
 async function searchExactFts(store, query, k) {
+  const orTsquery = buildEnglishOrTsquery(query);
+  if (!orTsquery) return [];
+
+  const hasMultipleTerms = query.trim().split(/\s+/).length > 1;
+
   const result = await store._query(
     `SELECT article_id AS id,
             chunk_index,
             headline,
             details,
-            ts_rank(ts, plainto_tsquery('english', $1)) AS score,
+            ts_rank_cd(ts, to_tsquery('english', $3)) +
+              CASE WHEN $4 AND ts @@ phraseto_tsquery('english', $1)
+                   THEN 0.3 ELSE 0 END AS score,
             attachment_url,
             ts_headline(
               'english',
               coalesce(headline, '') || ' ' || coalesce(details, ''),
-              plainto_tsquery('english', $1),
+              to_tsquery('english', $3),
               $2
             ) AS snippet
      FROM articles
-     WHERE ts @@ plainto_tsquery('english', $1)
-     ORDER BY article_id, ts_rank(ts, plainto_tsquery('english', $1)) DESC`,
-    [query, TS_HEADLINE_OPTS],
+     WHERE ts @@ to_tsquery('english', $3)
+     ORDER BY article_id, ts_rank_cd(ts, to_tsquery('english', $3)) DESC`,
+    [query, TS_HEADLINE_OPTS, orTsquery, hasMultipleTerms],
   );
 
   const rows = result.rows.map((row) => {
