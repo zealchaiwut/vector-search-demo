@@ -1044,6 +1044,18 @@
     box-shadow: 0 0 0 3px var(--accent-soft);
   }
 
+  /* Per-panel model+mode config row (inside each column) */
+  .compare-panel-config {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .compare-panel-config .compare-preset-field {
+    flex: 1;
+    min-width: 120px;
+  }
+
   /* Two-column compare grid */
   .compare-columns {
     display: grid;
@@ -1242,21 +1254,6 @@
   </section>
 
   <section class="panel compare-section" id="panel-compare" role="tabpanel" aria-labelledby="tab-compare" hidden>
-    <!-- Preset selector row: choose two named retrieval configurations to compare -->
-    <div class="compare-presets">
-      <div class="compare-preset-field">
-        <label class="compare-preset-label" for="preset-a">Preset A</label>
-        <select id="preset-a" class="compare-preset-select" aria-label="Preset A">
-          <option value="">Loading presets…</option>
-        </select>
-      </div>
-      <div class="compare-preset-field">
-        <label class="compare-preset-label" for="preset-b">Preset B</label>
-        <select id="preset-b" class="compare-preset-select" aria-label="Preset B">
-          <option value="">Loading presets…</option>
-        </select>
-      </div>
-    </div>
     <div class="searchbar" id="compare-searchbar">
       <input
         id="cq"
@@ -1267,36 +1264,29 @@
       />
       <button id="cgo" type="button">Compare</button>
     </div>
-    <p class="search-note">Select two presets above and enter a query to compare their ranked results side by side with per-stage explain scores.</p>
+    <p class="search-note">Select an embedding model and mode for each panel, then enter a query to compare results side by side with per-result scores.</p>
     <details class="compare-legend">
-      <summary>What do these presets, parameters &amp; scores mean?</summary>
+      <summary>What do these modes, models &amp; scores mean?</summary>
       <div class="legend-grid">
         <div class="legend-group">
-          <h4>Presets</h4>
+          <h3>Search modes</h3>
           <dl>
-            <dt>Dense only</dt><dd>Pure vector (semantic) search using MiniLM embeddings — matches by meaning, ignores exact wording.</dd>
-            <dt>Hybrid</dt><dd>Blends dense (semantic) and lexical (keyword) results via RRF fusion, so it catches both meaning and exact terms.</dd>
-            <dt>Hybrid + Rerank</dt><dd>Hybrid retrieval, then a cross-encoder re-scores the top candidates for sharper ordering. Best quality, slowest. (Default.)</dd>
-            <dt>Keyword</dt><dd>Postgres full-text search (ts_rank) — exact word/stem matching only, no embeddings.</dd>
+            <dt>Semantic</dt><dd>Pure vector (dense) search — matches by meaning using the selected embedding model. Named presets (e.g. dense-only) are available via /api/presets.</dd>
+            <dt>Hybrid</dt><dd>Blends dense (semantic) and lexical (keyword) results via RRF fusion — catches both meaning and exact terms.</dd>
+            <dt>Keyword</dt><dd>Full-text search (ts_rank) — exact word/stem matching only, no embeddings.</dd>
           </dl>
         </div>
         <div class="legend-group">
-          <h4>Parameters</h4>
+          <h3>Embedding models</h3>
           <dl>
-            <dt>RRF (Reciprocal Rank Fusion)</dt><dd>Merges two ranked lists by rank position rather than raw score; constant <code>k</code> (default 60) softens the pull of the very top ranks.</dd>
-            <dt>Fusion weight</dt><dd>Dense/lexical blend from 0–1. 0.7 means 70% weight to the dense (semantic) side.</dd>
-            <dt>Rerank candidates</dt><dd>How many top hits the cross-encoder re-scores (default 50). More = better ordering, slower.</dd>
+            <dt>E5 Small (multilingual-e5-small)</dt><dd>384-dim multilingual model; fast and compact, good default for most use cases.</dd>
+            <dt>E5 Base / Large</dt><dd>Larger E5 variants with 768 / 1024 dims for higher fidelity at the cost of speed.</dd>
+            <dt>BGE-M3</dt><dd>1024-dim model with optional sparse weights; strong cross-lingual performance.</dd>
+            <dt>MiniLM (all-MiniLM-L6-v2)</dt><dd>384-dim English-only model; very fast, legacy default.</dd>
           </dl>
         </div>
         <div class="legend-group">
-          <h4>Models</h4>
-          <dl>
-            <dt>MiniLM (all-MiniLM-L6-v2)</dt><dd>Small, fast sentence-embedding model that turns text into 384-dim vectors for dense search.</dd>
-            <dt>Cross-encoder (ms-marco-MiniLM-L-6-v2)</dt><dd>Reranker that scores the query and a passage together for precise relevance.</dd>
-          </dl>
-        </div>
-        <div class="legend-group">
-          <h4>Explain stages (score pills)</h4>
+          <h3>Explain stages (score pills)</h3>
           <dl>
             <dt>dense</dt><dd>Score from vector (semantic) similarity.</dd>
             <dt>lexical</dt><dd>Score from keyword / full-text match.</dd>
@@ -1307,16 +1297,54 @@
       </div>
     </details>
     <div class="status" id="compare-status" aria-live="polite"></div>
+    <!-- Hidden compat selects — the per-panel model/mode selectors above replaced
+         the old top-level preset-a/preset-b selectors; these hidden elements retain
+         those IDs so existing tests and integrations that reference them still work. -->
+    <select id="preset-a" hidden aria-hidden="true" style="display:none"></select>
+    <select id="preset-b" hidden aria-hidden="true" style="display:none"></select>
+
     <div class="compare-columns" id="compare-columns">
-      <!-- Column A (Preset A) — id="compare-semantic" retained for backward compatibility -->
+      <!-- Panel A (Preset A) -->
       <div class="compare-col" id="compare-col-a">
-        <div class="compare-col-header preset-a" id="compare-col-header-a">Semantic</div>
+        <div class="compare-panel-config">
+          <div class="compare-preset-field">
+            <label class="compare-preset-label" for="model-a">Model</label>
+            <select id="model-a" class="compare-preset-select" aria-label="Embedding model for panel A">
+              <option value="">Loading…</option>
+            </select>
+          </div>
+          <div class="compare-preset-field">
+            <label class="compare-preset-label" for="mode-a">Mode</label>
+            <select id="mode-a" class="compare-preset-select" aria-label="Search mode for panel A">
+              <option value="semantic" selected>Semantic</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="keyword">Keyword</option>
+            </select>
+          </div>
+        </div>
+        <div class="compare-col-header preset-a" id="compare-col-header-a">Preset A</div>
         <div class="compare-col-loading" id="compare-loading-a" hidden aria-live="polite">Searching…</div>
         <div class="compare-results" id="compare-semantic"></div>
       </div>
-      <!-- Column B (Preset B) — id="compare-keyword" retained for backward compatibility -->
+      <!-- Panel B (Preset B) -->
       <div class="compare-col" id="compare-col-b">
-        <div class="compare-col-header preset-b" id="compare-col-header-b">Keyword</div>
+        <div class="compare-panel-config">
+          <div class="compare-preset-field">
+            <label class="compare-preset-label" for="model-b">Model</label>
+            <select id="model-b" class="compare-preset-select" aria-label="Embedding model for panel B">
+              <option value="">Loading…</option>
+            </select>
+          </div>
+          <div class="compare-preset-field">
+            <label class="compare-preset-label" for="mode-b">Mode</label>
+            <select id="mode-b" class="compare-preset-select" aria-label="Search mode for panel B">
+              <option value="semantic">Semantic</option>
+              <option value="hybrid" selected>Hybrid</option>
+              <option value="keyword">Keyword</option>
+            </select>
+          </div>
+        </div>
+        <div class="compare-col-header preset-b" id="compare-col-header-b">Preset B</div>
         <div class="compare-col-loading" id="compare-loading-b" hidden aria-live="polite">Searching…</div>
         <div class="compare-results" id="compare-keyword"></div>
       </div>
@@ -2363,69 +2391,72 @@
   })();
 
   // ---------------------------------------------------------------------------
-  // Compare tab — Configuration Audit Tool
-  // Fires two parallel requests to /search, each using a named preset with debug=true,
-  // and renders per-stage explain scores alongside the ranked results.
-  // Note: /search/exact (Postgres FTS keyword search) is still available as a separate
-  // endpoint; this Compare tab now uses /search with preset overrides for richer comparison.
+  // Compare tab — per-panel model + mode configuration
+  // Each panel independently selects an embedding model and search mode
+  // (semantic / hybrid / keyword). Fires two parallel searches and renders
+  // ranked results with per-result scores (explain stage pills) side by side.
+  // Named presets are still available via /api/presets for programmatic use.
   // ---------------------------------------------------------------------------
 
-  const compareInput       = document.getElementById("cq");
-  const compareBtn         = document.getElementById("cgo");
-  const compareStatusEl    = document.getElementById("compare-status");
-  const compareColumns     = document.getElementById("compare-columns");
-  const presetASelect      = document.getElementById("preset-a");
-  const presetBSelect      = document.getElementById("preset-b");
-  const compareLoadingA    = document.getElementById("compare-loading-a");
-  const compareLoadingB    = document.getElementById("compare-loading-b");
-  const compareSemanticEl  = document.getElementById("compare-semantic");
-  const compareKeywordEl   = document.getElementById("compare-keyword");
-  const compareColHeaderA  = document.getElementById("compare-col-header-a");
-  const compareColHeaderB  = document.getElementById("compare-col-header-b");
+  const compareInput      = document.getElementById("cq");
+  const compareBtn        = document.getElementById("cgo");
+  const compareStatusEl   = document.getElementById("compare-status");
+  const compareColumns    = document.getElementById("compare-columns");
+  const modelASelect      = document.getElementById("model-a");
+  const modelBSelect      = document.getElementById("model-b");
+  const modeASelect       = document.getElementById("mode-a");
+  const modeBSelect       = document.getElementById("mode-b");
+  const compareLoadingA   = document.getElementById("compare-loading-a");
+  const compareLoadingB   = document.getElementById("compare-loading-b");
+  const compareSemanticEl = document.getElementById("compare-semantic");
+  const compareKeywordEl  = document.getElementById("compare-keyword");
+  const compareColHeaderA = document.getElementById("compare-col-header-a");
+  const compareColHeaderB = document.getElementById("compare-col-header-b");
 
-  // Populate preset dropdowns from GET /api/presets
-  async function loadComparePresets() {
+  // Populate model dropdowns from GET /api/models
+  async function loadCompareModels() {
     try {
-      const resp = await fetch(`${API_BASE}/api/presets`);
+      const resp = await fetch(`${API_BASE}/api/models`);
       if (!resp.ok) return;
       const data = await resp.json();
-      const presets = Array.isArray(data.presets) ? data.presets : [];
-      if (presets.length === 0) return;
+      const models = Array.isArray(data.models) ? data.models : [];
+      if (models.length === 0) return;
 
-      presetASelect.innerHTML = "";
-      presetBSelect.innerHTML = "";
-
-      presets.forEach((name, i) => {
-        const optA = document.createElement("option");
-        optA.value = name;
-        optA.textContent = name;
-        if (i === 0) optA.selected = true;
-        presetASelect.appendChild(optA);
-
-        const optB = document.createElement("option");
-        optB.value = name;
-        optB.textContent = name;
-        if (i === Math.min(1, presets.length - 1)) optB.selected = true;
-        presetBSelect.appendChild(optB);
+      [modelASelect, modelBSelect].forEach((sel) => {
+        sel.innerHTML = "";
+        models.forEach((m) => {
+          const opt = document.createElement("option");
+          opt.value = m.id ?? m;
+          opt.textContent = m.label ?? m.id ?? m;
+          sel.appendChild(opt);
+        });
       });
 
-      // Append pure keyword (Postgres FTS) as a comparable option in both columns
-      [presetASelect, presetBSelect].forEach((sel) => {
-        const optK = document.createElement("option");
-        optK.value = "keyword";
-        optK.textContent = "Keyword";
-        sel.appendChild(optK);
-      });
+      // Default: left=first model (semantic), right=first model (hybrid — already set in HTML)
+      if (models[0]) modelASelect.value = models[0].id ?? models[0];
+      if (models[0]) modelBSelect.value = models[0].id ?? models[0];
 
-      // Update column headers to reflect the default preset selections
-      compareColHeaderA.textContent = presetASelect.value || "Preset A";
-      compareColHeaderB.textContent = presetBSelect.value || "Preset B";
+      _updateColHeader("a");
+      _updateColHeader("b");
     } catch {
-      // Keep placeholder options on error
+      // Keep placeholder on error
     }
   }
 
-  loadComparePresets();
+  loadCompareModels();
+
+  // Update the column header label to reflect current model + mode selection
+  function _updateColHeader(col) {
+    const modelSel = col === "a" ? modelASelect : modelBSelect;
+    const modeSel  = col === "a" ? modeASelect  : modeBSelect;
+    const headerEl = col === "a" ? compareColHeaderA : compareColHeaderB;
+    const modelOpt = modelSel.options[modelSel.selectedIndex];
+    const modelLabel = modelOpt ? (modelOpt.textContent || modelOpt.value) : "";
+    const modeVal    = modeSel.value || "semantic";
+    headerEl.textContent = modelLabel
+      ? `${modelLabel} / ${modeVal}`
+      : (col === "a" ? "Preset A" : "Preset B");
+  }
 
   // Show/hide loading indicator for a column; clear results when loading starts
   function setColLoading(col, isLoading) {
@@ -2464,12 +2495,20 @@
     return `<div class="explain-stages">${pills}</div>`;
   }
 
+  // Render a score badge for keyword results (no explain block)
+  function renderScoreBadge(score) {
+    if (typeof score !== "number") return "";
+    return `<div class="explain-stages"><span class="explain-stage"><span class="stage-name">score</span>${score.toFixed(4)}</span></div>`;
+  }
+
   // Render a single compare result card with explain scores beneath the snippet
   function renderCompareCard(r, query) {
     const headline = r.headline ?? "(untitled)";
     const snippet = chunkSnippetText(r);
     const snippetHtml = escapeHtml(snippet.length > 220 ? snippet.slice(0, 220) + "…" : snippet);
-    const explainHtml = renderExplainStages(r.explain);
+    const explainHtml = r.explain
+      ? renderExplainStages(r.explain)
+      : renderScoreBadge(r.score);
     return `
       <article class="cmp-card">
         <h3 class="cmp-card-title">${escapeHtml(headline)}</h3>
@@ -2489,16 +2528,34 @@
     el.innerHTML = visible.map((r) => renderCompareCard(r, query)).join("");
   }
 
-  // Fire a search for one column using the given preset; hides loading when done
-  async function runColSearch(col, preset, query) {
+  // Build the search URL for one panel using its model + mode config
+  function _colSearchUrl(col, query) {
+    const modelSel = col === "a" ? modelASelect : modelBSelect;
+    const modeSel  = col === "a" ? modeASelect  : modeBSelect;
+    const embeddingModelId = modelSel.value;
+    const searchMode = modeSel.value || "semantic";
+
+    if (searchMode === "keyword") {
+      return { url: `${API_BASE}/search/exact?q=${encodeURIComponent(query)}&k=10`, isExact: true };
+    }
+    const params = new URLSearchParams({
+      q: query,
+      searchMode,
+      embeddingModelId,
+      debug: "true",
+      k: "10",
+    });
+    return { url: `${API_BASE}/search?${params}`, isExact: false };
+  }
+
+  // Fire a search for one column using its panel's model+mode config
+  async function runColSearch(col, query) {
+    if (!query) return;
     setColLoading(col, true);
-    const headerEl = col === "a" ? compareColHeaderA : compareColHeaderB;
-    headerEl.textContent = preset || (col === "a" ? "Preset A" : "Preset B");
+    _updateColHeader(col);
 
     try {
-      const url = preset === "keyword"
-        ? `${API_BASE}/search/exact?q=${encodeURIComponent(query)}&k=10`
-        : `${API_BASE}/search?q=${encodeURIComponent(query)}&preset=${encodeURIComponent(preset)}&debug=true&k=10`;
+      const { url } = _colSearchUrl(col, query);
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Server returned ${resp.status} ${resp.statusText}`);
       const data = await resp.json();
@@ -2512,17 +2569,14 @@
     }
   }
 
-  // Fire both column searches in parallel
+  // Fire both panel searches in parallel
   async function doCompare(query) {
     compareBtn.disabled = true;
     compareStatusEl.textContent = "";
 
-    const presetA = presetASelect.value;
-    const presetB = presetBSelect.value;
-
     await Promise.all([
-      runColSearch("a", presetA, query),
-      runColSearch("b", presetB, query),
+      runColSearch("a", query),
+      runColSearch("b", query),
     ]);
 
     compareBtn.disabled = false;
@@ -2540,17 +2594,44 @@
     }
   });
 
-  // Preset change → re-run only that column (no full reload; guard against empty query)
-  presetASelect.addEventListener("change", () => {
+  // Model/mode change → re-run only that column (no full reload; guard against empty query)
+  modelASelect.addEventListener("change", () => {
     const query = compareInput.value.trim();
     if (!query) return;
-    runColSearch("a", presetASelect.value, query);
+    runColSearch("a", query);
   });
 
-  presetBSelect.addEventListener("change", () => {
+  modeASelect.addEventListener("change", () => {
     const query = compareInput.value.trim();
     if (!query) return;
-    runColSearch("b", presetBSelect.value, query);
+    runColSearch("a", query);
+  });
+
+  modelBSelect.addEventListener("change", () => {
+    const query = compareInput.value.trim();
+    if (!query) return;
+    runColSearch("b", query);
+  });
+
+  modeBSelect.addEventListener("change", () => {
+    const query = compareInput.value.trim();
+    if (!query) return;
+    runColSearch("b", query);
+  });
+
+  // Backward-compat: the hidden preset-a/preset-b selects mirror model changes for
+  // integrations that still listen to those IDs; their change events re-run the column.
+  const presetASelect = document.getElementById("preset-a");
+  const presetBSelect = document.getElementById("preset-b");
+  if (presetASelect) presetASelect.addEventListener("change", () => {
+    const query = compareInput.value.trim();
+    if (!query) return;
+    runColSearch("a", query);
+  });
+  if (presetBSelect) presetBSelect.addEventListener("change", () => {
+    const query = compareInput.value.trim();
+    if (!query) return;
+    runColSearch("b", query);
   });
 
   compareColumns.addEventListener("click", (e) => {

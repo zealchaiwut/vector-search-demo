@@ -93,6 +93,18 @@ const REGISTRY = {
 };
 
 /**
+ * Canonical model list for the Compare tab model selector.
+ * Each entry has an id (accepted by the search API) and a display label.
+ */
+export const CANONICAL_MODELS = [
+  { id: "Xenova/multilingual-e5-small", label: "E5 Small" },
+  { id: "Xenova/multilingual-e5-base",  label: "E5 Base" },
+  { id: "Xenova/multilingual-e5-large", label: "E5 Large" },
+  { id: "BAAI/bge-m3",                  label: "BGE-M3" },
+  { id: "Xenova/all-MiniLM-L6-v2",      label: "MiniLM L6" },
+];
+
+/**
  * Return the currently configured default model name (from EMBEDDING_MODEL env).
  * @returns {string}
  */
