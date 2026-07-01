@@ -449,7 +449,9 @@ async function handleRequest(req, res) {
       legacyK = url.searchParams.get("k");
       legacyN = url.searchParams.get("n");
       preset = url.searchParams.get("preset") ?? null;
-      modelParam = url.searchParams.get("model") || null;
+      // The Search tab sends ?model=; the Compare tab sends ?embeddingModelId=.
+      // Both explicitly select the per-model vector space for dense retrieval.
+      modelParam = url.searchParams.get("model") || url.searchParams.get("embeddingModelId") || null;
       const rawDebug = url.searchParams.get("debug");
       debug = rawDebug === "true" || rawDebug === "1";
       const rawParams = {};
@@ -476,7 +478,7 @@ async function handleRequest(req, res) {
       }
       q = body.q ?? "";
       preset = body.preset ?? null;
-      modelParam = body.model ?? null;
+      modelParam = body.model ?? body.embeddingModelId ?? null;
       debug = body.debug === true || body.debug === "true";
       const { q: _q, preset: _p, debug: _d, model: _m, ...rest } = body;
       overrideParams = parseConfigOverrides(rest);
