@@ -571,9 +571,49 @@ async function handleRequest(req, res) {
 // Start server
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Background model warm-up
+// ---------------------------------------------------------------------------
+// Embedding models (e5-large ~1GB, bge-m3 ~2GB) and the cross-encoder reranker
+// (~1GB) load into memory on first use, so the first hybrid+rerank query — and
+// each first use of a new model in the Compare tab — is slow (10-20s), then
+// ~2-3s once cached. Preload in the background at startup so the demo is warm.
+//   WARM_MODELS=comma,separated,model,ids  (default: the default embedding model)
+//   WARM_MODELS=all                        (preload every registered model)
+//   WARM_RERANK=0                          (skip reranker preload)
+async function warmUp() {
+  try {
+    const { createEmbedder } = await import("./embeddings/index.js");
+    let models = (process.env.WARM_MODELS ?? "").trim();
+    let ids;
+    if (models.toLowerCase() === "all") {
+      const { CANONICAL_MODELS } = await import("./embeddings/model-registry.js");
+      ids = CANONICAL_MODELS.map((m) => m.id);
+    } else {
+      ids = models ? models.split(",").map((s) => s.trim()).filter(Boolean) : [undefined];
+    }
+    for (const id of ids) {
+      const t0 = Date.now();
+      const e = await createEmbedder(id);
+      await e.embed(["query: warmup"]);
+      console.log(`[warmup] embedder ready: ${id ?? "default"} (${Date.now() - t0}ms)`);
+    }
+    if (process.env.WARM_RERANK !== "0" && process.env.WARM_RERANK !== "false") {
+      const t0 = Date.now();
+      const { createReranker } = await import("./rerank/index.js");
+      await createReranker().rerank("warmup", ["warmup passage"]);
+      console.log(`[warmup] reranker ready (${Date.now() - t0}ms)`);
+    }
+  } catch (err) {
+    console.warn(`[warmup] skipped: ${err?.message ?? err}`);
+  }
+}
+
 const server = createServer(handleRequest);
 server.listen(PORT, () => {
   console.log(`vector-search-demo server running at http://localhost:${PORT}`);
+  // Fire-and-forget so the port is accepting connections immediately.
+  warmUp();
 });
 
 export { search, searchDocuments };
