@@ -48,7 +48,8 @@ function scoreViaSidecar(query, chunks) {
 }
 
 export class BgeRerankerV2M3 {
-  #pipe = null;
+  #tokenizer = null;
+  #model = null;
   #useSidecar = false;
   #initialized = false;
 
@@ -56,23 +57,37 @@ export class BgeRerankerV2M3 {
     if (this.#initialized) return;
     this.#initialized = true;
 
+    // Default to bge-reranker-base: multilingual (scores Thai + English), an
+    // ungated Xenova ONNX export, unlike bge-reranker-v2-m3 which is gated and
+    // fails to download (which is why reranking silently fell back to the weak
+    // n-gram sidecar). Override with RERANKER_MODEL_ID.
     const modelId =
-      process.env.RERANKER_MODEL_ID ?? "Xenova/bge-reranker-v2-m3";
+      process.env.RERANKER_MODEL_ID ?? "Xenova/bge-reranker-base";
 
     try {
-      const { pipeline } = await import("@xenova/transformers");
-      this.#pipe = await pipeline("text-classification", modelId);
-    } catch {
+      const { AutoTokenizer, AutoModelForSequenceClassification } = await import(
+        "@xenova/transformers"
+      );
+      this.#tokenizer = await AutoTokenizer.from_pretrained(modelId);
+      this.#model = await AutoModelForSequenceClassification.from_pretrained(modelId);
+      // eslint-disable-next-line no-console
+      console.log(`[rerank] active model: ${modelId}`);
+    } catch (err) {
       this.#useSidecar = true;
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[rerank] model load failed (${err?.message ?? err}); using n-gram sidecar fallback`,
+      );
     }
   }
 
   /**
-   * Score each chunk against the query.
+   * Score each chunk against the query with a cross-encoder.
    *
    * @param {string} query
    * @param {string[]} chunks
-   * @returns {Promise<number[]>} Relevance score per chunk (higher = more relevant).
+   * @returns {Promise<number[]>} Raw relevance logits per chunk (higher = more
+   *   relevant). Left un-squashed so downstream ranking keeps full spread.
    */
   async rerank(query, chunks) {
     if (!Array.isArray(chunks) || chunks.length === 0) return [];
@@ -83,14 +98,14 @@ export class BgeRerankerV2M3 {
       return scoreViaSidecar(query, chunks);
     }
 
-    // Cross-encoder: score each (query, chunk) pair.
-    const results = await Promise.all(
-      chunks.map((chunk) => this.#pipe([[query, chunk]]))
+    // Cross-encoder pair scoring, batched: tokenize (query, chunk) for every
+    // chunk in one pass, run a single forward pass, read the relevance logit.
+    const inputs = this.#tokenizer(
+      new Array(chunks.length).fill(query),
+      { text_pair: chunks, padding: true, truncation: true },
     );
-
-    return results.map((r) => {
-      const item = Array.isArray(r) ? r[0] : r;
-      return typeof item?.score === "number" ? item.score : 0;
-    });
+    const { logits } = await this.#model(inputs);
+    const data = logits.data; // shape [n, 1] flattened row-major
+    return chunks.map((_, i) => Number(data[i]));
   }
 }
