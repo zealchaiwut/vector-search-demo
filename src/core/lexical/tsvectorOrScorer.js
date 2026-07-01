@@ -92,9 +92,59 @@ async function searchThaiOr(store, query, k) {
     }
   }
 
-  // Fallback: pg_trgm word_similarity (works even without ts_simple)
+  // Fallback: match each SEGMENTED query token as a substring of the raw text.
+  // Works on existing data whose ts_simple was back-filled unsegmented (so the
+  // to_tsquery path above finds nothing) — e.g. "ปัญหาทุจริต" still matches a
+  // document containing "ทุจริต". Scores by the fraction of query tokens present.
+  const substringRows = await searchThaiSubstring(store, tokens, k);
+  if (substringRows.length > 0) return substringRows;
+
+  // Last resort: pg_trgm word_similarity on the whole query string.
   const { trigramScorer } = await import('./trigramScorer.js');
   return trigramScorer(store, query, k);
+}
+
+/**
+ * Substring scorer for segmented Thai tokens against raw headline/details.
+ * No stored segmentation required — matches Thai words even when ts_simple was
+ * populated without word breaks. Scores by fraction of query tokens present.
+ *
+ * @param {import("../../store/PgVectorStore.js").PgVectorStore} store
+ * @param {string[]} tokens - segmented query word tokens
+ * @param {number} k
+ */
+async function searchThaiSubstring(store, tokens, k) {
+  const terms = [...new Set(tokens.map(sanitiseTerm).filter((t) => t && t.length >= 2))];
+  if (terms.length === 0) return [];
+
+  const likeParams = terms.map((t) => `%${t.replace(/[%_\\]/g, '\\$&')}%`);
+  const hitExprs = terms.map((_, i) => `(details ILIKE $${i + 1} OR headline ILIKE $${i + 1})`);
+  const whereClause = hitExprs.join(' OR ');
+  const scoreExpr = hitExprs.map((e) => `(CASE WHEN ${e} THEN 1 ELSE 0 END)`).join(' + ');
+  const limitParam = `$${terms.length + 1}`;
+
+  const result = await store._query(
+    `SELECT article_id AS id,
+            chunk_index,
+            headline,
+            details,
+            attachment_url,
+            (${scoreExpr})::float / ${terms.length} AS lexical_score
+     FROM articles
+     WHERE ${whereClause}
+     ORDER BY lexical_score DESC
+     LIMIT ${limitParam}`,
+    [...likeParams, k * 5],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    chunk_index: typeof row.chunk_index === 'number' ? row.chunk_index : parseInt(row.chunk_index ?? '0', 10),
+    headline: row.headline,
+    details: row.details,
+    attachment_url: row.attachment_url ?? null,
+    lexical_score: parseFloat(row.lexical_score),
+  }));
 }
 
 /**
