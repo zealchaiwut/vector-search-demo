@@ -541,10 +541,17 @@ export function _lexicalSearchFile(query, k = 10) {
 // Postgres-backed search path
 // ---------------------------------------------------------------------------
 
-async function _perModelCandidates(store, queryVec, modelId, limit) {
-  // Per-model dense vectors live in chunk_embeddings (real[], dimension-agnostic).
-  // Fetch this model's vectors joined to chunk metadata and score cosine in JS
-  // (embeddings are L2-normalised, so dot product == cosine).
+// In-memory cache of a model's per-chunk vectors + metadata, so we don't refetch
+// and re-parse thousands of real[] rows from Postgres on every query. Keyed by
+// model id; cleared with clearModelVectorCache() after a re-embed.
+const _modelVectorCache = new Map();
+
+export function clearModelVectorCache() {
+  _modelVectorCache.clear();
+}
+
+async function _loadModelVectors(store, modelId) {
+  if (_modelVectorCache.has(modelId)) return _modelVectorCache.get(modelId);
   const res = await store._query(
     `SELECT ce.chunk_id AS id, a.article_id, a.headline, a.details,
             a.attachment_url, a.chunk_index, ce.vector
@@ -553,7 +560,15 @@ async function _perModelCandidates(store, queryVec, modelId, limit) {
       WHERE ce.model_id = $1`,
     [modelId],
   );
-  return res.rows
+  _modelVectorCache.set(modelId, res.rows);
+  return res.rows;
+}
+
+async function _perModelCandidates(store, queryVec, modelId, limit) {
+  // Per-model dense vectors live in chunk_embeddings (real[], dimension-agnostic).
+  // Score cosine in JS (embeddings are L2-normalised, so dot product == cosine).
+  const rows = await _loadModelVectors(store, modelId);
+  return rows
     .map((r) => ({
       id: r.id,
       article_id: r.article_id,

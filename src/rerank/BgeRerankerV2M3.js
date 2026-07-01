@@ -51,12 +51,18 @@ export class BgeRerankerV2M3 {
   #tokenizer = null;
   #model = null;
   #useSidecar = false;
-  #initialized = false;
+  #initPromise = null;
 
+  // Share a single load promise so concurrent callers (e.g. a query arriving
+  // during the startup warm-up) all await the SAME model load instead of racing
+  // past a half-initialised instance (which left #tokenizer null → "tokenizer is
+  // not a function"). The model download can take ~80s cold.
   async #init() {
-    if (this.#initialized) return;
-    this.#initialized = true;
+    if (!this.#initPromise) this.#initPromise = this.#doInit();
+    return this.#initPromise;
+  }
 
+  async #doInit() {
     // Default to bge-reranker-base: multilingual (scores Thai + English), an
     // ungated Xenova ONNX export, unlike bge-reranker-v2-m3 which is gated and
     // fails to download (which is why reranking silently fell back to the weak
@@ -100,11 +106,15 @@ export class BgeRerankerV2M3 {
 
     // Cross-encoder pair scoring, batched: tokenize (query, chunk) for every
     // chunk in one pass, run a single forward pass, read the relevance logit.
-    const inputs = this.#tokenizer(
+    // Call through locals — a private field holding the callable tokenizer can't
+    // be invoked as this.#tokenizer(...).
+    const tokenizer = this.#tokenizer;
+    const model = this.#model;
+    const inputs = tokenizer(
       new Array(chunks.length).fill(query),
       { text_pair: chunks, padding: true, truncation: true },
     );
-    const { logits } = await this.#model(inputs);
+    const { logits } = await model(inputs);
     const data = logits.data; // shape [n, 1] flattened row-major
     return chunks.map((_, i) => Number(data[i]));
   }
