@@ -1228,6 +1228,12 @@
         <option value="keyword">Keyword</option>
       </select>
     </div>
+    <div class="compare-preset-field">
+      <label class="compare-preset-label" for="search-model">Model</label>
+      <select id="search-model" class="compare-preset-select" aria-label="Embedding model">
+        <option value="">Default</option>
+      </select>
+    </div>
   </div>
   <div class="searchbar">
     <input
@@ -1624,6 +1630,24 @@
   const statusEl = document.getElementById("status");
   const resultsEl = document.getElementById("results");
   const searchModeSelect = document.getElementById("search-mode");
+  const searchModelSelect = document.getElementById("search-model");
+
+  // Populate the Search-tab model dropdown from the registry. An empty value
+  // means "default" (the model the main articles.embedding column was built with).
+  if (searchModelSelect) {
+    fetch(`${API_BASE}/api/models`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d || !Array.isArray(d.models)) return;
+        for (const m of d.models) {
+          const o = document.createElement("option");
+          o.value = m.id;
+          o.textContent = m.label;
+          searchModelSelect.appendChild(o);
+        }
+      })
+      .catch(() => {});
+  }
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({
@@ -1897,9 +1921,12 @@
 
     try {
       const mode = searchModeSelect ? searchModeSelect.value : "hybrid-rerank";
+      const model = searchModelSelect ? searchModelSelect.value : "";
+      // Keyword is lexical (no embeddings) → model does not apply there.
+      const modelParam = model ? `&model=${encodeURIComponent(model)}` : "";
       const url = mode === "keyword"
         ? `${API_BASE}/search/exact?q=${encodeURIComponent(query)}&k=10`
-        : `${API_BASE}/search?q=${encodeURIComponent(query)}&preset=${encodeURIComponent(mode)}`;
+        : `${API_BASE}/search?q=${encodeURIComponent(query)}&preset=${encodeURIComponent(mode)}${modelParam}`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Server returned ${resp.status} ${resp.statusText}`);
       const data = await resp.json();
