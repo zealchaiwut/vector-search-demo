@@ -1760,17 +1760,35 @@
   // Used for keyword and hybrid search results so term-level highlighting is
   // visually consistent with semantic passage highlighting (AC6 of issue #188).
   // Returns plain escaped text when no terms match (AC5 — no empty <mark> wrappers).
+  // Tokenise a query into word-like terms across scripts. Intl.Segmenter splits
+  // Thai/CJK (which have no spaces) into real words; falls back to whitespace.
+  function highlightQueryTokens(query) {
+    const q = String(query || "").trim();
+    if (!q) return [];
+    let toks = [];
+    try {
+      if (typeof Intl !== "undefined" && Intl.Segmenter) {
+        const seg = new Intl.Segmenter(undefined, { granularity: "word" });
+        toks = [...seg.segment(q)].filter(s => s.isWordLike).map(s => s.segment);
+      }
+    } catch { /* fall through to whitespace split */ }
+    if (toks.length === 0) toks = q.split(/\s+/);
+    return toks.map(t => t.toLowerCase()).filter(t => t.length >= 2 && !STOPWORDS.has(t));
+  }
+
   function lexicalTermHighlight(text, query) {
     if (!text) return "";
     const escaped = escapeHtml(text);
-    const tokens = (String(query || "").toLowerCase().match(/[a-z0-9]{3,}/g) || [])
-      .filter(t => !STOPWORDS.has(t));
-    if (tokens.length === 0) return escaped;
-    const uniq = [...new Set(tokens)]
+    const uniq = [...new Set(highlightQueryTokens(query))]
       .sort((a, b) => b.length - a.length)
       .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-    const re = new RegExp(`\\b(${uniq.join("|")})\\b`, "gi");
-    return escaped.replace(re, '<mark>$&</mark>');
+    // No matchable tokens — highlight the whole passage so Thai/CJK results
+    // still get a visible highlight instead of a bare card.
+    if (uniq.length === 0) return `<mark>${escaped}</mark>`;
+    // No \b word boundaries — Thai/CJK have none; match term substrings directly.
+    const re = new RegExp(`(${uniq.join("|")})`, "gi");
+    const marked = escaped.replace(re, '<mark>$&</mark>');
+    return marked.includes("<mark>") ? marked : `<mark>${escaped}</mark>`;
   }
 
   function renderFlatChunkCard(r, query, topScore, { compact = false, isKeyword = false, mode = "semantic" } = {}) {
