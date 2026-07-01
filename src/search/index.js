@@ -47,13 +47,14 @@ function getMaxChunks(override) {
   return Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : DEFAULT_MAX_CHUNKS;
 }
 
-let _embedder = null;
-async function getEmbedder() {
-  if (!_embedder) {
+const _embedders = new Map();
+async function getEmbedder(modelId) {
+  const key = modelId || "__default__";
+  if (!_embedders.has(key)) {
     const { createEmbedder } = await import("../embeddings/index.js");
-    _embedder = await createEmbedder();
+    _embedders.set(key, await createEmbedder(modelId || undefined));
   }
-  return _embedder;
+  return _embedders.get(key);
 }
 
 // ---------------------------------------------------------------------------
@@ -540,16 +541,46 @@ export function _lexicalSearchFile(query, k = 10) {
 // Postgres-backed search path
 // ---------------------------------------------------------------------------
 
-async function _searchPostgres(query, k, maxChunks) {
+async function _perModelCandidates(store, queryVec, modelId, limit) {
+  // Per-model dense vectors live in chunk_embeddings (real[], dimension-agnostic).
+  // Fetch this model's vectors joined to chunk metadata and score cosine in JS
+  // (embeddings are L2-normalised, so dot product == cosine).
+  const res = await store._query(
+    `SELECT ce.chunk_id AS id, a.article_id, a.headline, a.details,
+            a.attachment_url, a.chunk_index, ce.vector
+       FROM chunk_embeddings ce
+       JOIN articles a ON a.id = ce.chunk_id
+      WHERE ce.model_id = $1`,
+    [modelId],
+  );
+  return res.rows
+    .map((r) => ({
+      id: r.id,
+      article_id: r.article_id,
+      headline: r.headline,
+      details: r.details,
+      attachment_url: r.attachment_url,
+      chunk_index: r.chunk_index,
+      score: dotProduct(queryVec, r.vector),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+async function _searchPostgres(query, k, maxChunks, modelId = null) {
   const trimmed = (query ?? "").trim();
   if (!trimmed) return [];
 
-  const embedder = await getEmbedder();
+  const embedder = await getEmbedder(modelId);
   const [queryEmbedding] = await embedder.embed([`query: ${trimmed}`]);
 
   const { getPgStore } = await import("../store/PgVectorStore.js");
   const store = getPgStore();
-  const candidates = await store.search(queryEmbedding, EF);
+  // When a model is explicitly selected, rank against that model's per-chunk
+  // vectors in chunk_embeddings; otherwise use the default articles.embedding.
+  const candidates = modelId
+    ? await _perModelCandidates(store, queryEmbedding, modelId, EF)
+    : await store.search(queryEmbedding, EF);
   if (candidates.length === 0) return [];
 
   // Group chunk hits by article_id, keeping only those above threshold.
@@ -696,9 +727,10 @@ export async function searchDocuments(query, k = 10, maxChunksPerArticle = null,
 
   // --- Stage 1: Dense retrieval ---
   const denseT0 = performance.now();
+  const modelId = cfg.modelId ?? null;
   let grouped;
   if (usePostgres()) {
-    grouped = await _searchPostgres(normalisedQuery, retrievalK, maxChunks);
+    grouped = await _searchPostgres(normalisedQuery, retrievalK, maxChunks, modelId);
   } else if (useMilvus()) {
     grouped = await _searchMilvus(normalisedQuery, retrievalK, maxChunks);
   } else {

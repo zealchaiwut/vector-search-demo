@@ -8,22 +8,30 @@ export const EMBEDDING_DIM = _modelInfo.dim;
 export const EMBEDDING_MODEL = _modelInfo.xenovaId;
 export const MODEL_SPARSE = _modelInfo.sparse;
 
-let _pipe = null;
+// One cached pipeline per resolved xenova model id, so the model can be chosen
+// per call (Compare tab / ?model=) without re-loading a shared singleton.
+const _pipes = new Map();
 
-async function getPipeline() {
-  if (!_pipe) {
-    _pipe = await pipeline("feature-extraction", EMBEDDING_MODEL);
+async function getPipeline(xenovaId) {
+  if (!_pipes.has(xenovaId)) {
+    _pipes.set(xenovaId, await pipeline("feature-extraction", xenovaId));
   }
-  return _pipe;
+  return _pipes.get(xenovaId);
 }
 
-export async function createEmbedder() {
-  await getPipeline();
+/**
+ * Create an embedder for a specific model.
+ * @param {string} [modelName] registered model name/id; defaults to EMBEDDING_MODEL.
+ */
+export async function createEmbedder(modelName = MODEL_NAME) {
+  const info = resolveModel(modelName);
+  await getPipeline(info.xenovaId);
 
   return {
-    dim: EMBEDDING_DIM,
-    sparse: MODEL_SPARSE,
-    modelName: MODEL_NAME,
+    dim: info.dim,
+    sparse: info.sparse,
+    modelName,
+    modelId: info.xenovaId,
     _pipelineInitCount: 1,
 
     /**
@@ -33,7 +41,7 @@ export async function createEmbedder() {
      * @returns {Promise<number[][]>}
      */
     async embed(texts) {
-      const pipe = await getPipeline();
+      const pipe = await getPipeline(info.xenovaId);
       const output = await pipe(texts, { pooling: "mean", normalize: true });
       return output.tolist();
     },
@@ -46,10 +54,10 @@ export async function createEmbedder() {
      * @returns {Promise<Record<string,number>[]>}
      */
     async embedSparse(texts) {
-      if (!MODEL_SPARSE) {
+      if (!info.sparse) {
         return texts.map(() => ({}));
       }
-      const pipe = await getPipeline();
+      const pipe = await getPipeline(info.xenovaId);
       try {
         // BGE-M3 sparse weights: ReLU over log(1 + logits) summed across sequence
         const rawOutput = await pipe(texts, {

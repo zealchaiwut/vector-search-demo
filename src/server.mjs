@@ -442,17 +442,19 @@ async function handleRequest(req, res) {
     let preset = null;
     let debug = false;
     let overrideParams = {};
+    let modelParam = null;
 
     if (req.method === "GET") {
       q = url.searchParams.get("q") ?? "";
       legacyK = url.searchParams.get("k");
       legacyN = url.searchParams.get("n");
       preset = url.searchParams.get("preset") ?? null;
+      modelParam = url.searchParams.get("model") || null;
       const rawDebug = url.searchParams.get("debug");
       debug = rawDebug === "true" || rawDebug === "1";
       const rawParams = {};
       for (const [key, val] of url.searchParams.entries()) {
-        if (key !== "q" && key !== "k" && key !== "n" && key !== "preset" && key !== "debug") {
+        if (key !== "q" && key !== "k" && key !== "n" && key !== "preset" && key !== "debug" && key !== "model") {
           rawParams[key] = val;
         }
       }
@@ -474,8 +476,9 @@ async function handleRequest(req, res) {
       }
       q = body.q ?? "";
       preset = body.preset ?? null;
+      modelParam = body.model ?? null;
       debug = body.debug === true || body.debug === "true";
-      const { q: _q, preset: _p, debug: _d, ...rest } = body;
+      const { q: _q, preset: _p, debug: _d, model: _m, ...rest } = body;
       overrideParams = parseConfigOverrides(rest);
     }
 
@@ -484,6 +487,9 @@ async function handleRequest(req, res) {
       jsonResponse(res, 400, { error: configError });
       return;
     }
+    // A selected embedding model routes dense retrieval to its per-model vectors
+    // (chunk_embeddings) instead of the default articles.embedding column.
+    if (modelParam) resolvedConfig.modelId = modelParam;
 
     const nParam = legacyN !== null ? parseInt(legacyN, 10) : null;
     try {
